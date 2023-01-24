@@ -1,11 +1,11 @@
 class PNL_STATUS:
-    WIN = 'win'
-    LOSS = 'loss'
-    BREAKEVEN = "breakeven"
+    WIN = 0
+    LOSS = 1
+    BREAKEVEN = 3
 
 class TRADE_TYPE:
-    BUY = 'buy'
-    SELL = 'sell'
+    BUY = 0
+    SELL = 1
 
     choices = (
         (BUY, "Buy"),
@@ -82,3 +82,5 @@ DEFUALT_OPTIONS_RULE = """{
     'puts': [None, ''],
 }
 """
+
+SUPPORTED_FILE_TYPES = ['csv']
