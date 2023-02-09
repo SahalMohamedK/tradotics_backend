@@ -8,32 +8,50 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authentication import TokenAuthentication
 from rest_framework import generics
-from .serializers import EarlyAccessUserSerializer, ProfileSerializer, SignupSerializer, LoginSerializer
+from .serializers import EarlyAccessUserSerializer, UserSerializer, SignupSerializer, LoginSerializer, ProfilePictureSerializer
 from .models import Profile
 
 class SignupView(generics.CreateAPIView):
   permission_classes = (AllowAny,)
   serializer_class = SignupSerializer
 
-class ProfileView(APIView):
+class UserView(APIView):
     authentication_classes = (TokenAuthentication, )
     permission_classes = (IsAuthenticated, )
+    serializer_class = UserSerializer
 
     def put(self, request):
         user = request.user
-        serializer = ProfileSerializer(user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        profile, create = Profile.objects.get_or_create(user=user)
-        profile.phoneNumber = serializer.data.get('phoneNumber')
-        profile.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        serializer = self.serializer_class(user, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request):
         user = request.user
-        profile, create = Profile.objects.get_or_create(user=user)
-        serializer = ProfileSerializer(user, context={'profile': profile})
+        serializer = self.serializer_class(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ProfilePictureView(APIView):
+    authentication_classes = (TokenAuthentication, )
+    permission_classes = (IsAuthenticated, )
+    serializer = ProfilePictureSerializer
+
+    def put(self, request):
+        user = request.user
+        serializer = self.serializer(user, data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status = status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        user = request.user
+        serializer = self.serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 def signinView(request):

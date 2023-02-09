@@ -1,3 +1,6 @@
+import shutil
+import os
+import hashlib
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
@@ -5,6 +8,9 @@ from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 from .models import EarlyAccessUser, Profile
+from mainapp.models import TradeHistory
+from django.conf import settings
+
 
 class SignupSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True, validators=[UniqueValidator(queryset=User.objects.all(), 
@@ -23,7 +29,14 @@ class SignupSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = User.objects.create(username=validated_data['username'], email=validated_data['email'])
         Profile.objects.create(user = user)
+        filename = hashlib.md5(user.username.encode()).hexdigest()+'.csv'
+        merged_filename = os.path.join(settings.MERGED_TRADES_PATH, filename)
+        output_filename = os.path.join(settings.OUTPUT_TRADES_PATH, filename)
+        demo_trade_history = TradeHistory(user=user, merged_trades=merged_filename, output_trades=output_filename, is_demo = True)
         user.set_password(validated_data['password'])
+        shutil.copy(settings.DEMO_MERGED_TRADES_PATH, merged_filename)
+        shutil.copy(settings.DEMO_OUTPUT_TRADES_PATH, output_filename)
+        demo_trade_history.save()
         user.save()
         return user
 
@@ -53,14 +66,18 @@ class EarlyAccessUserSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ('phoneNumber', 'picture')
+
+class UserSerializer(serializers.ModelSerializer):
     firstName = serializers.CharField(source='first_name')
     lastName = serializers.CharField(source='last_name')
-    # phoneNumber = serializers.SerializerMethodField()
+    profile = ProfileSerializer(read_only = False)
 
     class Meta:
         model = User
-        fields = ('firstName', 'lastName', 'email', 'username')
-        # , 'phoneNumber')
+        fields = ('firstName', 'lastName', 'email', 'username', 'profile')
         extra_kwargs = {
             'firstName': {
                 'required': True
@@ -73,14 +90,17 @@ class ProfileSerializer(serializers.ModelSerializer):
             },
             'username': {
                 'read_only': True
-            },
-            # 'phoneNumber': {
-            #     'required': True
-            # }
+            }
         }
 
-    # def get_phoneNumber(self, user):
-    #     profile = self.context.get('profile')
-    #     if(profile):
-    #         return profile.phoneNumber
-    #     return 
+    def update(self, instance, validated_data): 
+        profile_data = validated_data.pop('profile')
+        profile = Profile.objects.filter(user = instance)
+        profile.update(**profile_data)
+        super().update(instance=instance, validated_data=validated_data)
+        return instance
+
+class ProfilePictureSerializer(serializers.Serializer):
+    class Meta:
+        model = Profile
+        fields = ('picture')

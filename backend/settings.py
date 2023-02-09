@@ -145,6 +145,9 @@ MEDIA_URL = '/media/'
 
 OUTPUT_TRADES_PATH = os.path.join(MEDIA_ROOT, 'output_trades')
 MERGED_TRADES_PATH = os.path.join(MEDIA_ROOT, 'merged_trades')
+DEMO_PATH = os.path.join(MEDIA_ROOT, 'demo')
+DEMO_MERGED_TRADES_PATH = os.path.join(DEMO_PATH,'merged_trades.csv')
+DEMO_OUTPUT_TRADES_PATH = os.path.join(DEMO_PATH,'output_trades.csv')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field

@@ -15,4 +15,8 @@ class EarlyAccessUser(models.Model):
 
 class Profile(models.Model):
     user = models.OneToOneField(User, related_name='profile', on_delete=models.CASCADE)
-    phone_number = models.CharField(max_length=13, blank=False, null=False)
+    phoneNumber = models.CharField(max_length=13, blank=True, null = True)
+    picture = models.ImageField(upload_to='profile_pics', blank= True, null = True)
+
+    def __str__(self):
+        return str(self.user)
