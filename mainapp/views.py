@@ -128,7 +128,6 @@ def detailed_report_view(request):
         winners, losers = trades.winners_and_losers()
         highestPnl, lowestPnl = trades.highest_and_lowest_pnl()
         detailed_report_data = {
-            'tradesTable': trades.get()[:25],
             'winners': winners,
             'losers': losers,
             'totalTrades' : trades.total_trades(),

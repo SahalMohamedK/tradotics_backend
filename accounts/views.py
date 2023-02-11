@@ -33,7 +33,6 @@ class UserView(APIView):
         serializer = self.serializer_class(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 class ProfilePictureView(APIView):
     authentication_classes = (TokenAuthentication, )
     permission_classes = (IsAuthenticated, )
@@ -52,7 +51,6 @@ class ProfilePictureView(APIView):
         serializer = self.serializer(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
 @api_view(['POST'])
 def signinView(request):
     serializer = LoginSerializer(data=request.data)
@@ -60,22 +58,8 @@ def signinView(request):
         user = serializer.validated_data['user']
         token, created = Token.objects.get_or_create(user=user)
         user.save()
-
-        return Response(
-            {
-                'token': token.key,
-                'email': user.email,
-            },
-            status=status.HTTP_200_OK
-        )
-    else:
-        print(serializer.errors)
-        try:
-            message = serializer.errors['non_field_errors'][0]
-        except (IndexError, KeyError) as e:
-            message = "Some random message I don't know y"
-
-    return Response({'message': message}, content_type='application/json', status=status.HTTP_400_BAD_REQUEST)
+        return Response({'token': token.key, 'email': user.email}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

@@ -24,9 +24,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-a6-&tm2%__me5qa!lau#06q@#3h!427#u59-2))=4l(rc@-6z2'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1' if DEBUG else 'api.tradotics.com']
+ALLOWED_HOSTS = ['api.tradotics.com']
 
 # Application definition
 

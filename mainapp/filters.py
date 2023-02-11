@@ -45,6 +45,7 @@ class ChoiceFilter:
         choices = self.choices
         if not choices:
             choices = trades[self.column].drop_duplicates().to_list()
+            choices.sort()
             choices = zip(choices, choices)
         _choices = {}
         for i, choice in choices:

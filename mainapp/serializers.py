@@ -116,7 +116,6 @@ class DashboradSerializer(serializers.Serializer):
     dialyPnl = serializers.ListField()
 
 class DetailsReportSerializer(serializers.Serializer):
-    tradesTable = TradesTableSerializer(many = True)
     winners = serializers.IntegerField()
     losers = serializers.IntegerField()
     totalTrades = serializers.IntegerField()

@@ -251,7 +251,8 @@ class OutputTrades:
                     self.merged_trades.loc[i, 'tradeId'] = trade['id']
                 output_trades.append(trade)
         todf = pd.DataFrame(output_trades)
-        todf.drop(['tradeDate','executionTime', 'price', 'tradeId'], axis = 1, inplace=True)
+        print(todf)
+        todf.drop(['tradeDate','executionTime', 'price'], axis = 1, inplace=True)
         todf.to_csv(filename, index=False)
         self.output_trades = output_trades
         return todf
