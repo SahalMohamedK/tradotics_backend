@@ -27,6 +27,7 @@ SECRET_KEY = 'django-insecure-a6-&tm2%__me5qa!lau#06q@#3h!427#u59-2))=4l(rc@-6z2
 DEBUG = True
 
 ALLOWED_HOSTS = ['api.tradotics.com']
+# ALLOWED_HOSTS = ['127.0.0.1']
 
 # Application definition
 
