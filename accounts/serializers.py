@@ -7,7 +7,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
-from .models import EarlyAccessUser, Profile
+from .models import EarlyAccessUser, Profile, Portfolio
 from mainapp.models import TradeHistory
 from django.conf import settings
 
@@ -104,3 +104,18 @@ class ProfilePictureSerializer(serializers.Serializer):
     class Meta:
         model = Profile
         fields = ('picture')
+
+class ChangePasswordSerializer(serializers.Serializer):
+    oldPassword = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, validators=[validate_password])
+    rePassword = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        if attrs.get('password') != attrs.get('rePassword'):
+            raise serializers.ValidationError({"rePassword": "Password fields didn't match."})
+        return attrs
+
+class PortfolioSeriliser(serializers.ModelSerializer):
+    class Meta:
+        model = Portfolio
+        fields = ('name', 'value', 'pk')

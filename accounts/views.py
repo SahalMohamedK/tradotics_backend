@@ -8,8 +8,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authentication import TokenAuthentication
 from rest_framework import generics
-from .serializers import EarlyAccessUserSerializer, UserSerializer, SignupSerializer, LoginSerializer, ProfilePictureSerializer
-from .models import Profile
+from .serializers import EarlyAccessUserSerializer, UserSerializer, SignupSerializer, LoginSerializer, ProfilePictureSerializer, ChangePasswordSerializer, PortfolioSeriliser
+from .models import Profile, Portfolio
 
 class SignupView(generics.CreateAPIView):
   permission_classes = (AllowAny,)
@@ -52,6 +52,21 @@ class ProfilePictureView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def change_password_view(request):
+    user = request.user
+    change_password_serializer = ChangePasswordSerializer(data = request.data)
+    if change_password_serializer.is_valid():
+        data = change_password_serializer.data
+        if user.check_password(data['oldPassword']):
+            user.set_password(data['password'])
+            user.save()
+            return Response(status=status.HTTP_200_OK)
+        return Response({'oldPassword': 'Invalied password'}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(change_password_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
 def signinView(request):
     serializer = LoginSerializer(data=request.data)
     if serializer.is_valid():
@@ -74,5 +89,33 @@ def earlyAccessUserView(request):
     serializer = EarlyAccessUserSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class PortfoliosView(APIView):
+    authentication_classes = (TokenAuthentication, )
+    permission_classes = (IsAuthenticated, )
+    serializer = PortfolioSeriliser
+
+    def post(self, request):
+        serializer = self.serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user = request.user)
+            return Response(status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def get(self, request):
+        portfolios = Portfolio.objects.filter(user = request.user)
+        if portfolios.exists():
+            serializer = self.serializer(portfolios, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    def delete(self, request):
+        portfolios = Portfolio.objects.filter(user = request.user, pk = request.data['pk'])
+        if portfolios.exists():
+            portfolios.delete()
+            return Response(status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    

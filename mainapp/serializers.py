@@ -1,6 +1,6 @@
 from rest_framework import serializers
 import os
-from .models import Brocker, TradeHistory
+from .models import Brocker, TradeHistory, Comparison
 from django.core.validators import FileExtensionValidator
 from .consts import SUPPORTED_FILE_TYPES
 
@@ -12,7 +12,9 @@ class FiltersQuarySerializer(serializers.Serializer):
     symbol = serializers.ListField(child = serializers.CharField(), default=[], required = False)
     side = serializers.ListField(child = serializers.CharField(), default = [], required = False)
     price = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
-    # setup = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
+    setup = serializers.ListField(child = serializers.CharField(), default = [], required = False)
+    mistakes = serializers.ListField(child = serializers.CharField(), default = [], required = False)
+    tags = serializers.ListField(child = serializers.CharField(), default = [], required = False)
     status = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
     asset_type = serializers.ListField(child = serializers.CharField(), default = [], required = False)
     duration = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
@@ -21,6 +23,11 @@ class FiltersQuarySerializer(serializers.Serializer):
     hour = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
     r_mutiple = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
     notes_filled = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
+
+class PaginationQuarySerializer(serializers.Serializer):
+    filters = FiltersQuarySerializer()
+    start = serializers.IntegerField()
+    size = serializers.IntegerField()
 
 class TradeTableQuerySerializer(serializers.Serializer):
     filters = FiltersQuarySerializer()
@@ -31,7 +38,9 @@ class FiltersSerializer(serializers.Serializer):
     symbol = serializers.ListField()
     side = serializers.ListField()
     price = serializers.ListField()
-    # setup = serializers.ListField()
+    setup = serializers.ListField()
+    mistakes = serializers.ListField()
+    tags = serializers.ListField()
     status = serializers.ListField()
     asset_type = serializers.ListField()
     duration = serializers.ListField()
@@ -40,6 +49,26 @@ class FiltersSerializer(serializers.Serializer):
     hour = serializers.ListField()
     r_mutiple = serializers.ListField()
     notes_filled = serializers.ListField()
+
+class CompareQuerySerializer(serializers.Serializer):
+    filters1 = FiltersQuarySerializer()
+    filters2 = FiltersQuarySerializer()
+
+class ComparisonSerialiser(serializers.ModelSerializer):
+    class Meta:
+        model = Comparison
+        fields = ('filters1', 'filters2', 'name', 'desc', 'group1', 'group2', 'is_popular')
+        extra_kwargs = {
+            'is_popular': {
+                'read_only': True,
+            },
+            'filters1': {
+                'required': True, 
+            },
+            'filters2': {
+                'required': True, 
+            }
+        }
 
 class TradeSerializer(serializers.Serializer):
     status = serializers.IntegerField()
@@ -58,8 +87,10 @@ class TradeSerializer(serializers.Serializer):
     tradeHistory = serializers.IntegerField()
     stoploss = serializers.IntegerField(required = False)
     target = serializers.IntegerField(required = False)
-    note = serializers.CharField()
+    note = serializers.CharField(allow_blank=True)
     setup = serializers.ListField()
+    mistakes = serializers.ListField()
+    tags = serializers.ListField()
 
 class OrderSerializer(serializers.Serializer):
     symbol = serializers.CharField()
@@ -68,7 +99,7 @@ class OrderSerializer(serializers.Serializer):
     quantity = serializers.IntegerField()
     price = serializers.DecimalField(max_digits=30, decimal_places=15)
     executionTime = serializers.TimeField()
-    # expiryDate = serializers.DateField(required = False)
+    expiryDate = serializers.DateField()
     optionsType = serializers.CharField()
     tradeType = serializers.CharField()
     assetType = serializers.CharField()

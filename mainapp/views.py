@@ -1,23 +1,388 @@
 import pandas as pd
 import os
 import hashlib
-import datetime
-from io import StringIO
-from django.shortcuts import render
+from django.db.models import Q
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from .trades import MergedTrades, OutputTrades, Trades, DemoTrades
 from .serializers import BrockerNamesSerializer, BrockerSerializer, ImportTradesSerializer, FiltersQuarySerializer, \
-    DashboradSerializer, DetailsReportSerializer, TradesSerializer, TradeAnalyticsSerializer, FiltersSerializer, \
-    CalenderSerializer, CompareSerializer, TradeHistrotySerializer, TradeSerializer, TradeTableQuerySerializer, \
-    TradesTableSerializer
-from .models import Brocker, TradeHistory
+    FiltersSerializer, CompareQuerySerializer, TradeHistrotySerializer, TradeTableQuerySerializer, PaginationQuarySerializer,\
+    TradeSerializer, OrderSerializer, ComparisonSerialiser
+from .models import Brocker, TradeHistory, Comparison
 from django.conf import settings
-from .utils import human_delta
 from .consts import ERROR
+from .responses import success
+from .trades import MergedTrades, OutputTrades, Trades, Orders
+from .trades import fields
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def filters_view(request):
+    user = request.user    
+    trades = Trades(user)
+    filters = trades.filters.get()
+    filters_serializer = FiltersSerializer(data = filters)
+    if filters_serializer.is_valid():
+        return Response(filters_serializer.data, status=status.HTTP_200_OK)
+    return Response(filters_serializer.errors, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def trades_table_view(request):
+    user = request.user
+    pagination_query_serializer = PaginationQuarySerializer(data = request.data)
+    if pagination_query_serializer.is_valid():
+        filters = pagination_query_serializer.data['filters']
+        start = pagination_query_serializer.data['start']
+        size = pagination_query_serializer.data['size']
+        trades = Trades(user)
+        trades.filters.apply(filters)
+        data = trades.get([fields.trades(start, size)])
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(pagination_query_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def open_trades_table_view(request):
+    user = request.user
+    trade_table_query_serializer = TradeTableQuerySerializer(data = request.data)
+    if trade_table_query_serializer.is_valid():
+        filters = trade_table_query_serializer.data['filters']
+        start = trade_table_query_serializer.data['start']
+        size = trade_table_query_serializer.data['size']
+        trades = Trades(user)
+        trades.filters.apply(filters)
+        data = trades.get([fields.trades(start, size)])
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(trade_table_query_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def dashboard_view(request):
+    user = request.user
+    filter_serializer = FiltersQuarySerializer(data = request.data)
+    if filter_serializer.is_valid():
+        filters = filter_serializer.data
+        layout = [
+            fields.isDemo(),
+            fields.cumulativePnl(),
+            fields.totalPnl(),
+            fields.counts(),
+            fields.countsByDay(),
+            fields.pnlByDates(),
+            fields.pnlByStatus(),
+            fields.pnlByDays(),
+            fields.pnlByMonths(),
+            fields.pnlBySetup(),
+            fields.pnlByHours(),
+            fields.pnlByDuration(),
+            fields.dialyPnl(),
+            fields.openTrades(),
+            fields.insights()
+        ]
+        trades  = Trades(user)
+        trades.filters.apply(filters)
+        data = trades.get(layout)
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def detailed_report_view(request):
+    user = request.user
+    filter_serializer = FiltersQuarySerializer(data = request.data)
+    if filter_serializer.is_valid():
+        filters = filter_serializer.data
+        trades = Trades(user)
+        trades.filters.apply(filters)
+        layout = [
+            fields.counts(),
+            fields.pnlByTradeTypes(),
+            fields.pnlByStatus(),
+            fields.totalQuantity(),
+            fields.dateWise(),
+            fields.maxConsec(),
+            fields.counts(),
+            fields.countsByRoi(),
+            fields.countsByDay(),
+            fields.openAndClose(),
+            fields.highestPnlTrade(),
+            fields.lowestPnlTrade(),
+            fields.holdTimes(),
+            fields.dataByExpiryDate(),
+            fields.dayDistribution(),
+            fields.hourDistribution(),
+            fields.setupDistribution(),
+            fields.durationDistribution(),
+            fields.costDistribution(),
+            fields.priceDistribution(),
+            fields.symbolDistribution()
+        ]
+        data = trades.get(layout)
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def day_views_view(request):
+    user = request.user
+    pagination_query_serializer = PaginationQuarySerializer(data = request.data)
+    if pagination_query_serializer.is_valid():
+        filters = pagination_query_serializer.data['filters']
+        start = pagination_query_serializer.data['start']
+        size = pagination_query_serializer.data['size']
+        trades = Trades(user)
+        trades.filters.apply(filters)
+        layout = [
+            fields.dataByDates(start, size),
+            fields.totalDates('total')
+        ]
+        data = trades.get(layout)
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(pagination_query_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def calender_views_view(request):
+    user = request.user
+    filters_quary_serializer = FiltersQuarySerializer(data = request.data)
+    if filters_quary_serializer.is_valid():
+        filters = filters_quary_serializer.data
+        trades = Trades(user)
+        trades.filters.apply(filters)
+        layout = [
+            fields.pnlByDates()
+        ]
+        data = trades.get(layout)
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(filters_quary_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def trades_view(request):
+    user = request.user
+    filter_serializer = FiltersQuarySerializer(data = request.data)
+    if filter_serializer.is_valid():
+        filters = filter_serializer.data
+        trades = Trades(user)
+        trades.filters.apply(filters)
+        layout = [
+            fields.highestPnlTrade(),
+            fields.lowestPnlTrade(),
+            fields.counts()
+        ]
+        data = trades.get(layout)
+        return Response(data, status=status.HTTP_200_OK)
+    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def compare_view(request):
+    user = request.user
+    compare_serializer = CompareQuerySerializer(data = request.data)
+    if compare_serializer.is_valid():
+        filters1 = compare_serializer.data['filters1']
+        filters2 = compare_serializer.data['filters2']
+        trades1 = Trades(user)
+        trades2 = Trades(user)
+        trades1.filters.apply(filters1)
+        trades2.filters.apply(filters2)
+        layout = [
+            fields.counts(),
+            fields.highestPnlTrade(),
+            fields.lowestPnlTrade(),
+            fields.cumulativePnl(),
+            fields.dialyPnl(),
+            fields.pnlByDays(),
+            fields.pnlByMonths(),
+            fields.pnlByDuration(),
+            fields.profitFactor(),
+            fields.pnlByStatus(),
+            fields.pnlBySetup(),
+            fields.pnlByHours(),
+            fields.holdTimes()
+        ]
+        data1 = trades1.get(layout)
+        data2 = trades2.get(layout)
+        return Response({'data1': data1, 'data2': data2}, status=status.HTTP_200_OK)
+    return Response(compare_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def trade_view(request, id):
+    user = request.user
+    trades = Trades(user)
+    layout = [
+        fields.trade(id)
+    ]
+    data = trades.get(layout)
+    if data['trade']['id'] == id:
+        return Response(data, status=status.HTTP_200_OK)
+    return Response({'code': ERROR.INVALIED_TRADE}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def trade_update_view(request):
+    user = request.user
+    trade_serializer = TradeSerializer(data = request.data['trade'])
+    if trade_serializer.is_valid():
+        trade = trade_serializer.data
+        trades = Trades(user)
+        result = trades.update(trade)
+        if result:
+            return Response({'code': success.OK}, status=status.HTTP_200_OK)
+        return Response({'code': ERROR.TRADE_UPDATE_FAILED}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(trade_serializer.erros, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def orders_view(request, id):
+    user = request.user
+    orders = Orders(user)
+    layout = [
+        fields.ordersByTrade(id, name='orders')
+    ]
+    data = orders.get(layout)    
+    return Response(data, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def save_comparison_view(request):
+    user = request.user
+    comparison_serializer = ComparisonSerialiser(data = request.data)
+    if comparison_serializer.is_valid():
+        data = comparison_serializer.data
+        Comparison.objects.create(user = user, is_popular = False, **data)
+        return Response({'code': success.OK}, status=status.HTTP_200_OK)
+    return Response(comparison_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def comparisons_view(request):
+    user = request.user
+    comparison = Comparison.objects.filter(Q(user=user) | Q(is_popular=True))
+    if comparison.exists():
+        comparison_serializer = ComparisonSerialiser(comparison, many = True)
+        return Response(comparison_serializer.data, status=status.HTTP_200_OK)
+    return Response({'code': ERROR.NO_COMPARISON}, status=status.HTTP_204_NO_CONTENT)
+
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# @authentication_classes([TokenAuthentication])
+# def order_update_view(request):
+#     user = request.user
+#     order_serializer = OrderSerializer(request.data)
+#     if order_serializer.is_valid():
+#         order = order_serializer.data
+#         orders = Orders(user)
+#         if orders.update(order):
+#             return Response({'code': success.OK}, status=status.HTTP_200_OK)
+#         return Response({'code': ERROR.TRADE_UPDATE_FAILED}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#     return Response(order_serializer.erros, status=status.HTTP_400_BAD_REQUEST)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# @authentication_classes([TokenAuthentication])
+# def trade_view(request, id):
+#     user = request.user
+#     trade_histories = TradeHistory.objects.filter(user = user)
+#     trades = Trades(user)
+#     if trade_histories.exists():
+#         merged_trades = pd.DataFrame()
+#         is_merged_trades = False
+#         for trade_history in trade_histories:
+#             merged_filename = trade_history.merged_trades
+#             merged_trade = pd.read_csv(merged_filename)
+#             if is_merged_trades:
+#                 merged_trades = pd.concat([merged_trades, merged_trade]).drop_duplicates()
+#             else:
+#                 is_merged_trades = True
+#                 merged_trades = merged_trade
+#     if not merged_trades.empty:
+#         orders = merged_trades[merged_trades['tradeId'] == id]
+#         if not orders.empty:
+#             orders = orders.to_dict('records')
+#         else:
+#             orders = []
+
+#         trade = trades.get(id)
+#         if trade:
+#             entry = datetime.datetime.strptime(f"{trade['entryDate']} {trade['entryTime']}", '%Y-%m-%d %H:%M:%S')
+#             exit = datetime.datetime.strptime(f"{trade['exitDate']} {trade['exitTime']}", '%Y-%m-%d %H:%M:%S')
+#             data = {
+#                 'trade': trade,
+#                 'orders': orders,
+#                 'duration': human_delta(exit-entry),
+#             }
+#             trade_serializer = TradeAnalyticsSerializer(data= data)
+#             if trade_serializer.is_valid():
+#                 return Response(trade_serializer.data, status=status.HTTP_200_OK)
+#             return Response(trade_serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#         return Response({'code': ERROR.NO_TRADE}, status=status.HTTP_400_BAD_REQUEST)
+#     return Response({'code': ERROR.NO_TRADE_HISTORIES}, status=status.HTTP_400_BAD_REQUEST)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# @authentication_classes([TokenAuthentication])
+# def trade_update_view(request):
+#     user = request.user
+#     trade_update_serializer = TradeSerializer(data = request.data['trade'])
+#     if trade_update_serializer.is_valid():
+#         trade_update = trade_update_serializer.data
+#         result = False
+#         trade_histories = TradeHistory.objects.filter(user = user)
+#         for trade_history in trade_histories:
+#             if trade_history.pk == trade_update['tradeHistory']:
+#                 output_trades = pd.read_csv(trade_history.output_trades)
+#                 trade = output_trades[output_trades['id'] == trade_update['id']]
+#                 index = trade.index[0]
+#                 trade = trade.to_dict('records')[0]
+#                 trade_update['setup'] = ','.join(trade_update['setup'])
+#                 trade_update['mistakes'] = ','.join(trade_update['mistakes'])
+#                 trade_update['tags'] = ','.join(trade_update['tags'])
+#                 for column in trade_update:
+#                     if column in trade and trade[column] != trade_update[column]:
+#                         output_trades.loc[index, column] = trade_update[column]
+#                 output_trades.to_csv(trade_history.output_trades, index=False)
+#                 result = True
+#                 break
+#         if result:
+#             return Response({'message': 'Success'}, status=status.HTTP_200_OK)
+#         return Response({'message': 'Invalied trade updation'}, status=status.HTTP_400_BAD_REQUEST)
+#     return Response(trade_update_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# @authentication_classes([TokenAuthentication])
+# def trade_delete_view(request):
+#     user = request.user
+#     trade_delete_serilizer = TradeSerializer(data = request.data)
+#     if trade_delete_serilizer.is_valid():
+#         data = trade_delete_serilizer.data
+#         id = data['id']
+#         trade_history_id = data['tradeHstory']
+#         trade_history = TradeHistory.objects.get(pk = trade_history_id)
+#         pd.read_csv(trade_history.output_trades)
+#         pd.read_csv(trade_history.merged_trades)
+#     return Response(status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -56,345 +421,6 @@ def import_trades_view(request):
         trade.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def trades_table_view(request):
-    user = request.user
-    trade_table_query_serializer = TradeTableQuerySerializer(data = request.data)
-    if trade_table_query_serializer.is_valid():
-        filters = trade_table_query_serializer.data['filters']
-        start = trade_table_query_serializer.data['start']
-        size = trade_table_query_serializer.data['size']
-        trades = Trades(user)
-        trades.filters.apply(filters)
-        trades = trades.get()[start:start+size]
-        trades_table_serializer = TradesTableSerializer(data = trades, many = True)
-        if trades_table_serializer.is_valid():
-            return Response(trades_table_serializer.data, status=status.HTTP_200_OK)
-        return Response(trades_table_serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    return Response(trade_table_query_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def dashboard_view(request):
-    user = request.user
-    filter_serializer = FiltersQuarySerializer(data = request.data)
-    if filter_serializer.is_valid():
-        filters = filter_serializer.data
-        trades = Trades(user)
-        trades.filters.apply(filters)
-        winners, losers = trades.winners_and_losers()
-        winners_by_days, losers_by_days = trades.winners_and_losers_by_days()
-        dashboard_data = {
-            'isDemo': trades.is_demo,
-            'tradesTable': trades.get()[: 25],
-            'cumulativePnl': trades.cumulative_pnl(),
-            'totalNetPnl' : trades.total_net_pnl(),
-            'totalTrades' : trades.total_trades(),
-            'totalProfitFactor' : trades.profit_factor(),
-            'tradesByDays': trades.get_trades_by_days(),
-            'winners': winners,
-            'losers': losers,
-            'returns': trades.returns(),
-            'winnersByDays':winners_by_days,
-            'losersByDays': losers_by_days,
-            'insights': trades.dashboard_insights(),
-            'openTrades': trades.open_trades(),
-            'pnlByDays': trades.pnl_by_days()[0],
-            'pnlByMonths': trades.pnl_by_months()[0],
-            'pnlBySetup': trades.pnl_by_setup()[0],
-            'pnlByDuration': trades.pnl_by_duration()[0],
-            'dialyPnl': trades.dialy_pnl()
-        }
-        dashboradSerializer = DashboradSerializer(data=dashboard_data)
-        if dashboradSerializer.is_valid():
-            return Response(dashboradSerializer.data, status=status.HTTP_200_OK)
-        return Response(dashboradSerializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def detailed_report_view(request):
-    user = request.user
-    filter_serializer = FiltersQuarySerializer(data = request.data)
-    if filter_serializer.is_valid():
-        filters = filter_serializer.data
-        trades = Trades(user)
-        trades.filters.apply(filters)
-        winners, losers = trades.winners_and_losers()
-        highestPnl, lowestPnl = trades.highest_and_lowest_pnl()
-        detailed_report_data = {
-            'winners': winners,
-            'losers': losers,
-            'totalTrades' : trades.total_trades(),
-            'returns': trades.returns(),
-            'totalQuantity': trades.total_quantity(),
-            'days': trades.days(),
-            'maxConsec': trades.max_consec(),
-            'counts': trades.counts(),
-            'rois': trades.rois(),
-            'openAndClose': trades.open_and_close(),
-            'highestPnl': highestPnl,
-            'lowestPnl': lowestPnl,
-            'holdTimes': trades.hold_times(),
-            'dateToExpiry': trades.date_to_expiry(),
-            'dayDistribution': trades.pnl_by_days(),
-            'hourDistribution': trades.pnl_by_hours(),
-            'setupDistribution': trades.pnl_by_setup(),
-            'durationDistribution': trades.pnl_by_duration(),
-            'costDistribution': trades.pnl_by_cost(),
-            'priceDistribution': trades.pnl_by_price(),
-            'symbolDistribution': trades.pnl_by_symbol()
-        }
-        trades.pnl_by_cost()
-        detailed_report_serializer = DetailsReportSerializer(data=detailed_report_data)
-        if detailed_report_serializer.is_valid():
-            return Response(detailed_report_serializer.data, status=status.HTTP_200_OK)
-        return Response(detailed_report_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def trades_view(request):
-    user = request.user
-    filter_serializer = FiltersQuarySerializer(data = request.data)
-    if filter_serializer.is_valid():
-        filters = filter_serializer.data
-        trades = Trades(user)
-        trades.apply_filter(filters)
-        highestPnl, lowestPnl = trades.highest_and_lowest_pnl()
-        winners, losers = trades.winners_and_losers()
-        detailed_report_data = {
-            'trades_table': trades.get()[:25],
-            'winners': winners,
-            'losers': losers,
-            'highestPnl': highestPnl,
-            'lowestPnl': lowestPnl,
-            'total_trades' : trades.total_trades()
-        }
-        trades_serializer = TradesSerializer(data=detailed_report_data)
-        if trades_serializer.is_valid():
-            return Response(trades_serializer.data, status=status.HTTP_200_OK)
-        return Response(trades_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def calender_views(request):
-    user = request.user
-    filter_serializer = FiltersQuarySerializer(data = request.data)
-    if filter_serializer.is_valid():
-        filters = filter_serializer.data
-        trades = Trades(user)
-        trades.filters.apply(filters)
-        calender_views_data = {
-            'tradesByDays': trades.get_trades_by_days(),
-        }
-        calender_serializer = CalenderSerializer(data=calender_views_data)
-        if calender_serializer.is_valid():
-            return Response(calender_serializer.data, status=status.HTTP_200_OK)
-        return Response(calender_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def compare_views(request):
-    user = request.user
-    filter_1 = request.data['filter1']
-    filter_2 = request.data['filter2']
-    filter_serializer_1 = FiltersQuarySerializer(data = filter_1)
-    filter_serializer_2 = FiltersQuarySerializer(data = filter_2)
-    if filter_serializer_1.is_valid():
-        if filter_serializer_2.is_valid():
-            filters_1 = filter_serializer_1.data
-            filters_2 = filter_serializer_2.data
-            trades_1 = Trades(user)
-            trades_2 = Trades(user)
-            trades_1.filters.apply(filters_1)
-            trades_2.filters.apply(filters_2)
-        
-            winners_1, losers_1 = trades_1.winners_and_losers()
-            winners_2, losers_2 = trades_2.winners_and_losers()
-
-            highest_pnl_1, lowest_pnl_1 = trades_1.highest_and_lowest_pnl()
-            highest_pnl_2, lowest_pnl_2 = trades_2.highest_and_lowest_pnl()
-
-            cumulativePnl1 = trades_1.cumulative_pnl()
-            cumulativePnl2 = trades_2.cumulative_pnl()
-            doubleCumulativeLabels = cumulativePnl1[0]+cumulativePnl2[0]
-            doubleCumulativeLabels = list(set(doubleCumulativeLabels))
-            doubleCumulativeLabels.sort(key = lambda i: datetime.datetime.strptime(i, '%Y-%m-%d'))
-            doubleCumulativePnls1 = []
-            doubleCumulativePnls2 = []
-            prevPnl1 = 0
-            prevPnl2 = 0
-            for label in doubleCumulativeLabels:
-                if doubleCumulativePnls1:
-                    prevPnl1 = doubleCumulativePnls1[-1]
-                if doubleCumulativePnls2:
-                    prevPnl2 = doubleCumulativePnls2[-1]  
-                if label in cumulativePnl1[0] and label in cumulativePnl2[0]:
-                    doubleCumulativePnls1.append(cumulativePnl1[1][cumulativePnl1[0].index(label)])                   
-                    doubleCumulativePnls2.append(cumulativePnl2[1][cumulativePnl2[0].index(label)])
-                elif label in cumulativePnl1[0]:               
-                    doubleCumulativePnls1.append(cumulativePnl1[1][cumulativePnl1[0].index(label)])
-                    doubleCumulativePnls2.append(prevPnl2)
-                elif label in cumulativePnl2[0]:
-                    doubleCumulativePnls2.append(cumulativePnl2[1][cumulativePnl2[0].index(label)])                 
-                    doubleCumulativePnls1.append(prevPnl1)
-
-            dialy_pnl1 = trades_1.dialy_pnl()
-            dialy_pnl2 = trades_2.dialy_pnl()
-            double_dialy_labels = dialy_pnl1[0]+dialy_pnl2[0]
-            double_dialy_labels = list(set(double_dialy_labels))
-            double_dialy_labels.sort(key = lambda i: datetime.datetime.strptime(i, '%Y-%m-%d'))
-            double_dialy_pnls1 = []
-            double_dialy_pnls2 = []
-            for label in double_dialy_labels:
-                if label in dialy_pnl1[0] and label in dialy_pnl2[0]:
-                    double_dialy_pnls1.append(dialy_pnl1[1][dialy_pnl1[0].index(label)])                   
-                    double_dialy_pnls2.append(dialy_pnl2[1][dialy_pnl2[0].index(label)])
-                elif label in dialy_pnl1[0]:               
-                    double_dialy_pnls1.append(dialy_pnl1[1][dialy_pnl1[0].index(label)])
-                    double_dialy_pnls2.append(0)
-                elif label in dialy_pnl2[0]:
-                    double_dialy_pnls2.append(dialy_pnl2[1][dialy_pnl2[0].index(label)])                 
-                    double_dialy_pnls1.append(0)
-
-            pnl_by_days1 = trades_1.pnl_by_days()[0]
-            pnl_by_days2 = trades_2.pnl_by_days()[0]
-
-            pnl_by_months1 = trades_1.pnl_by_months()[0]
-            pnl_by_months2 = trades_2.pnl_by_months()[0]
-
-            pnl_by_duration1 = trades_1.pnl_by_duration()[0]
-            pnl_by_duration2 = trades_2.pnl_by_duration()[0]
-
-            compare_data = {
-                'trades1': {
-                    'cumulativePnl': cumulativePnl1,
-                    'winners': winners_1,
-                    'lossers': losers_1,
-                    'totalTrades' : trades_1.total_trades(),        
-                    'highestPnl': highest_pnl_1['netPnl'],
-                    'lowestPnl': lowest_pnl_1['netPnl'],
-                    'profitFactor': trades_1.profit_factor(),
-                    'returns': trades_1.returns(),
-                    'holdTimes': trades_1.hold_times(),
-                },
-                'trades2': {
-                    'cumulativePnl': cumulativePnl2,
-                    'winners': winners_2,
-                    'lossers': losers_2,
-                    'totalTrades' : trades_2.total_trades(),        
-                    'highestPnl': highest_pnl_2['netPnl'],
-                    'lowestPnl': lowest_pnl_2['netPnl'],
-                    'profitFactor': trades_2.profit_factor(),
-                    'returns': trades_2.returns(),
-                    'holdTimes': trades_2.hold_times(),
-                },
-                'doubleCumulativePnl': [doubleCumulativeLabels, doubleCumulativePnls1, doubleCumulativePnls2],
-                'doubleDialyPnl': [double_dialy_labels, double_dialy_pnls1, double_dialy_pnls2],
-                'pnlByDays': [pnl_by_days1, pnl_by_days2],
-                'pnlByMonths': [pnl_by_months1, pnl_by_months2],
-                'pnlByDuration': [pnl_by_duration1, pnl_by_duration2]
-            }
-            compare_serializer = CompareSerializer(data = compare_data)
-            if compare_serializer.is_valid():
-                return Response(compare_serializer.data, status=status.HTTP_200_OK)
-            return Response(compare_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'filter2': filter_serializer_2.errors}, status=status.HTTP_400_BAD_REQUEST)
-    return Response({'filter1': filter_serializer_1.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def trade_view(request, id):
-    user = request.user
-    trade_histories = TradeHistory.objects.filter(user = user)
-    trades = Trades(user)
-    if trade_histories.exists():
-        merged_trades = pd.DataFrame()
-        is_merged_trades = False
-        for trade_history in trade_histories:
-            merged_filename = trade_history.merged_trades
-            merged_trade = pd.read_csv(merged_filename)
-            if is_merged_trades:
-                merged_trades = pd.concat([merged_trades, merged_trade]).drop_duplicates()
-            else:
-                is_merged_trades = True
-                merged_trades = merged_trade
-    if not merged_trades.empty:
-        orders = merged_trades[merged_trades['tradeId'] == id]
-        if not orders.empty:
-            orders = orders.to_dict('records')
-        else:
-            orders = []
-
-        trade = trades.get(id)
-        if trade:
-            entry = datetime.datetime.strptime(f"{trade['entryDate']} {trade['entryTime']}", '%Y-%m-%d %H:%M:%S')
-            exit = datetime.datetime.strptime(f"{trade['exitDate']} {trade['exitTime']}", '%Y-%m-%d %H:%M:%S')
-            print(trade)
-            data = {
-                'trade': trade,
-                'orders': orders,
-                'duration': human_delta(exit-entry),
-            }
-            trade_serializer = TradeAnalyticsSerializer(data= data)
-            if trade_serializer.is_valid():
-                return Response(trade_serializer.data, status=status.HTTP_200_OK)
-            return Response(trade_serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return Response({'code': ERROR.NO_TRADE}, status=status.HTTP_400_BAD_REQUEST)
-    return Response({'code': ERROR.NO_TRADE_HISTORIES}, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def trade_update_view(request):
-    user = request.user
-    trade_update_serializer = TradeSerializer(data = request.data['trade'])
-    if trade_update_serializer.is_valid():
-        trade_update = trade_update_serializer.data
-        result = False
-        trade_histories = TradeHistory.objects.filter(user = user)
-        for trade_history in trade_histories:
-            if trade_history.pk == trade_update['tradeHistory']:
-                output_trades = pd.read_csv(trade_history.output_trades)
-                trade = output_trades[output_trades['id'] == trade_update['id']]
-                index = trade.index[0]
-                trade = trade.to_dict('records')[0]
-                trade_update['setup'] = ','.join(trade_update['setup'])
-                for column in trade_update:
-                    if column in trade and trade[column] != trade_update[column]:
-                        output_trades.loc[index, column] = trade_update[column]
-                output_trades.to_csv(trade_history.output_trades, index=False)
-                result = True
-                break
-        if result:
-            return Response({'message': 'Success'}, status=status.HTTP_200_OK)
-        return Response({'message': 'Invalied trade updation'}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(trade_update_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@authentication_classes([TokenAuthentication])
-def filters_view(request):
-    user = request.user    
-    trades = Trades(user)
-    filters = trades.filters.get()
-    filters_serializer = FiltersSerializer(data = filters)
-    if filters_serializer.is_valid():
-        return Response(filters_serializer.data, status=status.HTTP_200_OK)
-    return Response(filters_serializer.errors, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -453,3 +479,28 @@ def brockerDetailsView(request, id):
     brocker = Brocker.objects.get(id=id)
     serializer = BrockerSerializer(brocker)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def test_view(request):
+    user = request.user
+    layout = [
+        fields.isDemo(),
+        fields.cumulativePnl(),
+        fields.totalPnl(),
+        fields.counts(),
+        fields.countsByDay(),
+        fields.profitFactor(),
+        fields.pnlByDates(),
+        fields.pnlByTradeTypes(),
+        fields.pnlByStatus(),
+        fields.pnlByDays(),
+        fields.pnlByMonths(),
+        fields.pnlBySetup(),
+        fields.pnlByDuration(),
+    ]
+    trades  = Trades(user)
+    # trades.filters.apply(filters)
+    data = trades.get(layout)
+    return Response(data, status=status.HTTP_200_OK)

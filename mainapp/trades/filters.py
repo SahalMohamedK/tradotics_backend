@@ -1,4 +1,4 @@
-from .consts import TRADE_TYPE, STATUS, ASSETS_TYPE, OPTIONS_TYPE, DAYS, YES_OR_NO
+from ..consts import TRADE_TYPE, STATUS, ASSETS_TYPE, OPTIONS_TYPE, DAYS, YES_OR_NO
 
 class Formatter:
     def __init__(self, formatter = '{cur} - {next}', more = True):
@@ -85,6 +85,28 @@ class RangeFilter:
                 trades = trades[self.limits[i]<=trades[self.column]]
         return trades
 
+class IncludesFilter:
+    def __init__(self, name= None, column = None,):
+        self.name = name
+        self.column = column
+
+    def options(self, trades):
+        options = {}
+        for i, trade in trades.iterrows():
+            svalues = trade[self.column]
+            if svalues:
+                values = svalues.split(',')
+                if values:
+                    for value in values:
+                        if value not in options:
+                            options[value] = value
+        return options
+    
+    def apply(self, options, trades):
+        if options:
+            return trades[trades[self.column].apply(lambda x: any(i in x.split(',') for i in options))]
+        return trades
+
 class Filters:
     def __init__(self, trades):
         self.trades = trades
@@ -92,7 +114,9 @@ class Filters:
             'symbol': ChoiceFilter(),
             'side': ChoiceFilter(column = 'tradeType', choices = [('buy', 'Buy'), ('sell', 'Sell')]),
             'price': RangeFilter(column = 'entryPrice', limits = [0, 5, 10, 20, 50, 100, 150, 200, 500, 1000, 2000, 5000, 10000], formatter=Formatter(formatter='${cur} - ${next}')),
-            # 'setup': ChoiceFilter(),
+            'setup': IncludesFilter(),
+            'mistakes': IncludesFilter(),
+            'tags': IncludesFilter(),
             'status': ChoiceFilter(choices = STATUS.choices),
             'asset_type': ChoiceFilter(column='assetType',choices=ASSETS_TYPE.choices),
             'duration': RangeFilter(limits = [0, 1, 5, 10, 20, 30, 45, 60, 90, 120, 180, 240], formatter = DurationFormatter())	,
@@ -109,6 +133,7 @@ class Filters:
                 filter.name = ' '.join(filter_key.split('_')).capitalize()
             if not filter.column:
                 filter.column = filter_key
+                
     def get(self):
         filters = {}
         for filter_key in self.filters:

@@ -6,10 +6,9 @@ import ast
 import datetime
 from .models import TradeHistory
 from .consts import ASSETS_TYPE, TRADE_TYPE, OPTIONS_TYPE, STATUS
-from .filters import Filters
-from .utils import human_delta
+from .trades.filters import Filters
+from .trades.utils import human_delta
 from django.conf import settings
-
 
 class Rule:
     def __init__(self, regex = r'.*', type = str, required = True, default = '', choice = None):
@@ -215,6 +214,8 @@ class OutputTrades:
                     trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
                     trade['note'] = ''
                     trade['setup'] = ''
+                    trade['mistakes'] = ''
+                    trade['tags'] = ''
                     for i in idxs:
                         self.merged_trades.loc[i, 'tradeId'] = trade['id']
                     sum_buy_price = 0
@@ -247,11 +248,12 @@ class OutputTrades:
                 trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
                 trade['note'] = ''
                 trade['setup'] = ''
+                trade['mistakes'] = ''
+                trade['tags'] = ''
                 for i in idxs:
                     self.merged_trades.loc[i, 'tradeId'] = trade['id']
                 output_trades.append(trade)
         todf = pd.DataFrame(output_trades)
-        print(todf)
         todf.drop(['tradeDate','executionTime', 'price'], axis = 1, inplace=True)
         todf.to_csv(filename, index=False)
         self.output_trades = output_trades
@@ -276,6 +278,7 @@ class Trades:
             else:
                 is_trades = True
                 self.trades = output_trades
+            self.trades = self.trades.fillna('')
         self.init()
 
     def init(self):
@@ -299,7 +302,7 @@ class Trades:
                 status = STATUS.LOSS
 
             date_to_expiry = 'N/A'
-            if not pd.isnull(trade['expiryDate']):
+            if trade['expiryDate']:
                 expiry_date = datetime.datetime.strptime(trade['expiryDate'], '%Y-%m-%d')
                 entry_date = datetime.datetime.strptime(trade['entryDate'], '%Y-%m-%d')
 
@@ -329,13 +332,25 @@ class Trades:
                 trade = trade.to_dict('records')[0]
                 setup = trade['setup']
                 if not pd.isnull(setup):
-                    trade['setup'] = trade['setup'].split(',')
+                    trade['setup'] = list(filter(lambda i: i, trade['setup'].split(',')))
                 else:
                     trade['setup'] = []
+                
+                mistakes = trade['mistakes']
+                if not pd.isnull(mistakes):
+                    trade['mistakes'] = list(filter(lambda i: i, trade['mistakes'].split(',')))
+                else:
+                    trade['mistakes'] = []
+                
+                tags = trade['tags']
+                if not pd.isnull(tags):
+                    trade['tags'] = list(filter(lambda i: i, trade['tags'].split(',')))
+                else:
+                    trade['tags'] = []
                 return trade
             return None
         return self.trades.to_dict('records')
-
+        
     def total_quantity(self):
         return sum(self.trades['quantity'].to_list())
     
@@ -852,6 +867,89 @@ class Trades:
 
         return [labels, pnls, trades, costs]            
 
-class DemoTrades(Trades):
-    def __init__(self):
-        self.init()
+    def __init__(self, user):
+        self.user = user
+        self.trades = None
+        self.is_demo = False
+        self.is_error = False
+
+        self.trade_histories = TradeHistory.objects.filter(user=user, is_demo = False)
+        if not self.trade_histories.exists():
+            self.trade_histories = TradeHistory.objects.filter(user=user ,is_demo=True)
+            self.is_demo = True
+
+        if not self.trade_histories.exists():
+            self.is_error = True
+        else:
+            is_trades = False
+            for trade_history in self.trade_histories:
+                output_filename = trade_history.output_trades
+                output_trades = pd.read_csv(output_filename)
+                output_trades.insert(1, 'tradeHistory', trade_history.pk)
+                if is_trades:
+                    self.trades = pd.concat([self.trades, output_trades]).drop_duplicates()
+                else:
+                    is_trades = True
+                    self.trades = output_trades
+                self.trades = self.trades.fillna('')
+            
+        self.filters = Filters(self)
+
+    def get(self, layout):
+        data = {}
+        for i, trade in self.trades.iterrows():
+            trade = trade.to_dict()
+
+            avg_buy_price = trade['avgBuyPrice']
+            avg_sell_price = trade['avgSellPrice']
+            trade_type = trade['tradeType']
+            quantity = trade['quantity']
+            
+            pnl = round((avg_sell_price - avg_buy_price) * quantity, 2)
+            if trade_type == TRADE_TYPE.Repr.BUY:
+                roi = round(100*(avg_sell_price - avg_buy_price) / avg_buy_price, 2)
+            else:
+                roi = round(100*(avg_buy_price - avg_sell_price) / avg_sell_price, 2)
+
+            status = STATUS.BREAKEVEN
+            if pnl > 0:
+                status = STATUS.WIN
+            elif pnl < 0:
+                status = STATUS.LOSS
+
+            date_to_expiry = 'N/A'
+            if trade['expiryDate']:
+                expiry_date = datetime.datetime.strptime(trade['expiryDate'], '%Y-%m-%d')
+                entry_date = datetime.datetime.strptime(trade['entryDate'], '%Y-%m-%d')
+
+                date_to_expiry = (expiry_date - entry_date).days
+
+                if date_to_expiry>=30:
+                    date_to_expiry = '30+ days'
+                elif date_to_expiry>6:
+                    date_to_expiry = '6 to 30 days'
+                elif date_to_expiry == 0:
+                    date_to_expiry = 'Same day'
+                else:
+                    date_to_expiry = f'{date_to_expiry} days'
+
+            trade['netPnl'] = pnl
+            trade['status'] = status
+            trade['roi'] = roi
+            trade['charge'] = round(pnl / 10, 4)
+            trade['dateToExpiry'] = date_to_expiry
+            for field in layout.get('loop', []):
+                if field.is_first:
+                    field_data = field.start(trade)
+                    field.is_first = False
+                else:
+                    field_data = field.next(data[field.name], trade)
+                data[field.name] = field_data
+
+        for field in layout.get('loop', []):
+            data[field.name] = field.end(data[field.name])
+
+        for field in layout.get('init', []):
+            data[field.name] = field.get(data, self)
+
+        return data

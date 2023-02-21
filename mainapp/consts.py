@@ -15,7 +15,6 @@ class ChoiceConst:
             setattr(self.Repr, const.upper(), const)
             self.reducer[const] = i
 
-
 class STATUS(ChoiceConst):
     consts = ['loss', 'win', 'breakeven']
 
@@ -195,5 +194,7 @@ DEFUALT_RULE = f"""{{
 SUPPORTED_FILE_TYPES = ['csv']
 
 class ERROR:
-    NO_TRADE = 0
+    INVALIED_TRADE = 0
     NO_TRADE_HISTORIES = 1
+    TRADE_UPDATE_FAILED = 2
+    NO_COMPARISON = 3
