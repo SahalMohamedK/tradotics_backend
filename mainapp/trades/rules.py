@@ -1,5 +1,5 @@
 import re
-from .consts import OPTIONS_TYPE, TRADE_TYPE, ASSETS_TYPE
+from mainapp.consts import OPTIONS_TYPE, TRADE_TYPE, ASSETS_TYPE
 
 class Rule:
     def __init__(self, regex = r'.*', type = str, required = True, default = '', choice = None):
@@ -12,11 +12,11 @@ class Rule:
         self.error = ''
 
     def set(self, value):
+        if self.choice:
+            value = self.choice.reducer(value)
         match = re.match(self.regex, str(value))
         if match:
             value = match.group()
-            if self.choice:
-                value = self.choice.reducer[value]
             self.value = self.type(value)
 
     def is_valid(self):

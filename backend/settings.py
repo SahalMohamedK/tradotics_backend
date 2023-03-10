@@ -26,8 +26,8 @@ SECRET_KEY = 'django-insecure-a6-&tm2%__me5qa!lau#06q@#3h!427#u59-2))=4l(rc@-6z2
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['api.tradotics.com']
-# ALLOWED_HOSTS = ['127.0.0.1']
+# ALLOWED_HOSTS = ['api.tradotics.com']
+ALLOWED_HOSTS = ['127.0.0.1']
 
 # Application definition
 
@@ -44,20 +44,43 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'corsheaders',
     'ckeditor',
+    'social_django',
 
     # local apps
     'accounts',
     'mainapp',
 ]
 
+SOCIAL_AUTH_PIPELINE = (
+    'social_core.pipeline.social_auth.social_details',
+    'social_core.pipeline.social_auth.social_uid',
+    'social_core.pipeline.social_auth.auth_allowed',
+    'social_core.pipeline.social_auth.social_user',
+    'social_core.pipeline.social_auth.associate_user',
+    'social_core.pipeline.social_auth.load_extra_data',
+    'social_core.pipeline.user.user_details',
+)
+
 AUTHENTICATION_BACKENDS = (
     'accounts.backends.EmailOrUsernameModelBackend',
-    'django.contrib.auth.backends.ModelBackend' )
+    'django.contrib.auth.backends.ModelBackend',
+    'social_core.backends.google.GoogleOAuth2', )
 
 if not DEBUG:
     REST_FRAMEWORK = {
         'DEFAULT_RENDERER_CLASSES': ('rest_framework.renderers.JSONRenderer',)
     }
+
+# REST_FRAMEWORK = {
+#     'DEFAULT_AUTHENTICATION_CLASSES': [
+#         'rest_framework.authentication.BasicAuthentication',
+#         'rest_framework.authentication.SessionAuthentication',
+#         'rest_framework.authentication.TokenAuthentication'
+#     ],
+#     'DEFAULT_PERMISSION_CLASSES': [
+#         'rest_framework.permissions.IsAuthenticated',
+#     ]
+# }
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -145,9 +168,9 @@ MEDIA_URL = '/media/'
 
 OUTPUT_TRADES_PATH = os.path.join(MEDIA_ROOT, 'output_trades')
 MERGED_TRADES_PATH = os.path.join(MEDIA_ROOT, 'merged_trades')
-DEMO_PATH = os.path.join(MEDIA_ROOT, 'demo')
-DEMO_MERGED_TRADES_PATH = os.path.join(DEMO_PATH,'merged_trades.csv')
-DEMO_OUTPUT_TRADES_PATH = os.path.join(DEMO_PATH,'output_trades.csv')
+DEMO_PATH = os.path.join(MEDIA_ROOT, 'libs')
+DEMO_MERGED_TRADES_PATH = os.path.join(DEMO_PATH,'merged_trades_demo.csv')
+DEMO_OUTPUT_TRADES_PATH = os.path.join(DEMO_PATH,'output_trades_demo.csv')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field

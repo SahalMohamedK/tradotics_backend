@@ -1,5 +1,0 @@
-symbol,tradeDate,exchange,quantity,price,executionTime,strikePrice,expiryDate,optionsType,tradeType,assetType,id,tradeId
-NIFTY22OCT17000CE,2022-09-30,NSE,50,432.0,14:51:01,,2022-10-27,calls,buy,equity_options,a4acde2cd015b008ca6a24b1630b7640,3d27c51c92d0cdb39b050e77dc80b44b
-NIFTY22OCT17000CE,2022-09-30,NSE,50,429.35,14:51:25,,2022-10-27,calls,sell,equity_options,9eaf916851bcb3fc46a2b8131795ec9e,3d27c51c92d0cdb39b050e77dc80b44b
-NIFTY22OCTFUT,2022-09-30,NSE,50,17143.65,14:52:07,,2022-10-27,,buy,equity_futures,cb480d11a8806d7a509c0585880d39f4,0eeccb8639934420c644053002a52253
-NIFTY22OCTFUT,2022-09-30,NSE,50,17140.0,14:52:47,,2022-10-27,,sell,equity_futures,caba9c66b896576806e9859403d3a2af,0eeccb8639934420c644053002a52253

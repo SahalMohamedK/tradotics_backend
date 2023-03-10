@@ -20,9 +20,4 @@ class Profile(models.Model):
 
     def __str__(self):
         return str(self.user)
-
-class Portfolio(models.Model):    
-    user = models.ForeignKey(to=User, on_delete=models.CASCADE)
-    name = models.CharField(max_length=225)
-    value = models.DecimalField(decimal_places=2, max_digits=10)
     

@@ -8,8 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authentication import TokenAuthentication
 from rest_framework import generics
-from .serializers import EarlyAccessUserSerializer, UserSerializer, SignupSerializer, LoginSerializer, ProfilePictureSerializer, ChangePasswordSerializer, PortfolioSeriliser
-from .models import Profile, Portfolio
+from .serializers import EarlyAccessUserSerializer, UserSerializer, SignupSerializer, LoginSerializer, ProfilePictureSerializer, ChangePasswordSerializer
 
 class SignupView(generics.CreateAPIView):
   permission_classes = (AllowAny,)
@@ -92,30 +91,9 @@ def earlyAccessUserView(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class PortfoliosView(APIView):
-    authentication_classes = (TokenAuthentication, )
-    permission_classes = (IsAuthenticated, )
-    serializer = PortfolioSeriliser
-
-    def post(self, request):
-        serializer = self.serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(user = request.user)
-            return Response(status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    def get(self, request):
-        portfolios = Portfolio.objects.filter(user = request.user)
-        if portfolios.exists():
-            serializer = self.serializer(portfolios, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    
-    def delete(self, request):
-        portfolios = Portfolio.objects.filter(user = request.user, pk = request.data['pk'])
-        if portfolios.exists():
-            portfolios.delete()
-            return Response(status=status.HTTP_200_OK)
-        return Response(status=status.HTTP_400_BAD_REQUEST)
-
-    
+# @api_view(['DELETE'])
+# @permission_classes([IsAuthenticated])
+# @authentication_classes([TokenAuthentication])
+# def delete_account_view(request):
+#     u = User.objects.get(user)
+#         u.delete()

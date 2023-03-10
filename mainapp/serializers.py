@@ -1,12 +1,39 @@
 from rest_framework import serializers
 import os
-from .models import Brocker, TradeHistory, Comparison
+from .models import Brocker, TradeHistory, Comparison, Portfolio, PortfolioEntry
 from django.core.validators import FileExtensionValidator
 from .consts import SUPPORTED_FILE_TYPES
 
 class ImportTradesSerializer(serializers.Serializer):
     file = serializers.FileField(validators=[FileExtensionValidator(allowed_extensions=SUPPORTED_FILE_TYPES)])
     brocker = serializers.IntegerField()
+    portfolio = serializers.IntegerField()
+
+class ManualTradeOrderSeriaiser(serializers.Serializer):
+    date = serializers.DateField()
+    time = serializers.TimeField()
+    volume = serializers.IntegerField()
+    price = serializers.DecimalField(max_digits= 12,decimal_places=2)
+
+class ManualTradeSerializer(serializers.Serializer):
+    assetType = serializers.IntegerField()
+    symbol = serializers.CharField()
+    entryType = serializers.IntegerField()
+    entries = serializers.ListField(child=ManualTradeOrderSeriaiser(), allow_empty=False)
+    exits = serializers.ListField(child=ManualTradeOrderSeriaiser(), allow_empty=False)
+    stoploss = serializers.FloatField(required = False)
+    target = serializers.FloatField(required = False)
+    portfolio = serializers.IntegerField()
+
+class ManualExecutionSerializer(serializers.Serializer):
+    assetType = serializers.IntegerField()
+    symbol = serializers.CharField()
+    entryType = serializers.IntegerField()
+    date = serializers.DateField()
+    time = serializers.TimeField()
+    volume = serializers.IntegerField()
+    price = serializers.DecimalField(max_digits= 12,decimal_places=2)
+    portfolio = serializers.IntegerField()
 
 class FiltersQuarySerializer(serializers.Serializer):
     symbol = serializers.ListField(child = serializers.CharField(), default=[], required = False)
@@ -16,13 +43,15 @@ class FiltersQuarySerializer(serializers.Serializer):
     mistakes = serializers.ListField(child = serializers.CharField(), default = [], required = False)
     tags = serializers.ListField(child = serializers.CharField(), default = [], required = False)
     status = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
-    asset_type = serializers.ListField(child = serializers.CharField(), default = [], required = False)
+    assetType = serializers.ListField(child = serializers.CharField(), default = [], required = False)
     duration = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
     day = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
-    call_put = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
+    optionsType = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
     hour = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
-    r_mutiple = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
-    notes_filled = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
+    # r_mutiple = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
+    notesFilled = serializers.ListField(child = serializers.IntegerField(), default = [], required = False)
+    fromDate = serializers.DateField(format='%Y-%m-%d', required = False)
+    toDate = serializers.DateField(format='%Y-%m-%d', required = False)
 
 class PaginationQuarySerializer(serializers.Serializer):
     filters = FiltersQuarySerializer()
@@ -210,8 +239,22 @@ class BrockerSerializer(serializers.ModelSerializer):
         model = Brocker
         fields = ['name', 'desc']
 
+class PortfolioEntrySeriliser(serializers.ModelSerializer):
+    class Meta:
+        model = PortfolioEntry
+        fields = '__all__'
+
+class PortfolioSeriliser(serializers.ModelSerializer):
+    portfolioentry_set = PortfolioEntrySeriliser(many = True, read_only=True)
+    class Meta:
+        model = Portfolio
+        fields = ('name', 'portfolioentry_set', 'pk')
+
 class TradeHistrotySerializer(serializers.ModelSerializer):
     brocker = BrockerNamesSerializer()
+    portfolio = PortfolioSeriliser()
     class Meta:
         model = TradeHistory
-        fields = ('brocker', 'type', 'created', 'no_trades', 'no_executions', 'pk')
+        fields = ('brocker', 'portfolio', 'type', 'created', 'no_trades', 'no_executions', 'pk')
+
+

@@ -16,6 +16,10 @@ GROUP_CHOICE = (
     (1, 'Edit')
 )
 
+PORTFOLIO_ENTRY_TYPE = (
+    (0, 'Deposit'),
+)
+
 class Brocker(models.Model):
     name = models.CharField(max_length=50, blank=False, null=False)
     desc = RichTextField()
@@ -25,11 +29,23 @@ class Brocker(models.Model):
     def __str__(self):
         return self.name
 
+class Portfolio(models.Model):    
+    user = models.ForeignKey(to=User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=225)
+
+class PortfolioEntry(models.Model):
+    type = models.IntegerField(choices=PORTFOLIO_ENTRY_TYPE, default = 0)
+    value = models.DecimalField(decimal_places=2, max_digits=10)
+    date = models.DateTimeField()
+    desc = models.TextField()
+    portfolio = models.ForeignKey(to= Portfolio, on_delete=models.CASCADE)
+
 class TradeHistory(models.Model):
     user = models.ForeignKey(to=User, on_delete=models.CASCADE)
     merged_trades = models.FilePathField(path=settings.MERGED_TRADES_PATH)
     output_trades = models.FilePathField(path=settings.OUTPUT_TRADES_PATH)
     brocker = models.ForeignKey(Brocker, on_delete=models.CASCADE, null=True)
+    portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, null=True)
     type = models.IntegerField(choices=TRADE_HISTORY_TYPE, default = 0)
     no_trades = models.IntegerField(default= 0)
     no_executions = models.IntegerField(default= 0)
@@ -45,4 +61,3 @@ class Comparison(models.Model):
     group1 = models.SmallIntegerField(choices=GROUP_CHOICE)
     group2 = models.SmallIntegerField(choices=GROUP_CHOICE)
     is_popular = models.BooleanField(default=False)
-

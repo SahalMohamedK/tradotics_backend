@@ -1,4 +1,5 @@
-from ..consts import TRADE_TYPE, STATUS, ASSETS_TYPE, OPTIONS_TYPE, DAYS, YES_OR_NO
+import datetime
+from mainapp.consts import TRADE_TYPE, STATUS, ASSETS_TYPE, OPTIONS_TYPE, DAYS, YES_OR_NO
 
 class Formatter:
     def __init__(self, formatter = '{cur} - {next}', more = True):
@@ -21,7 +22,9 @@ class Formatter:
 class DurationFormatter(Formatter):
     def local(self, n):
         if n > 60:
-            return str(n//60)+' hr'
+            n = n/60
+            n = int(n) if int(n) == n else n
+            return str(n)+' hr'
         return str(n)+' min'
 
 class TimeFormatter(Formatter):
@@ -36,10 +39,11 @@ class TimeFormatter(Formatter):
         return f'{n%12} am'
 
 class ChoiceFilter:
-    def __init__(self, name= None, column = None, choices = None):
+    def __init__(self, name= None, column = None, choices = None, converter = lambda v: v):
         self.column = column
         self.choices = choices
         self.name = name
+        self.converter = converter
         
     def options(self, trades):
         choices = self.choices
@@ -52,17 +56,22 @@ class ChoiceFilter:
             _choices[i] = choice
         return _choices
 
-    def apply(self, options, trades):
+    def apply(self, options, trade):
         if options:
-            return trades.loc[trades[self.column].isin(options)]
-        return trades
+            value = trade[self.column]
+            value = self.converter(value)
+            if value in options:
+                return trade
+            return
+        return trade
 
 class RangeFilter:
-    def __init__(self, name= None, column = None, limits = [], formatter = Formatter()):
+    def __init__(self, name= None, column = None, limits = [], formatter = Formatter(), converter = lambda v: v):
         self.column = column
         self.limits = limits
-        self.formatter = formatter
         self.name = name
+        self.formatter = formatter
+        self.converter = converter
     
     def options(self, trades):
         ranges = {}
@@ -77,16 +86,18 @@ class RangeFilter:
             ranges[i] = formated_string
         return ranges
     
-    def apply(self, options, trades):
+    def apply(self, options, trade):
         for i in options:
-            if i+1<len(self.limits):
-                trades = trades[trades[self.column].between(self.limits[i], self.limits[i+1])]
-            else:
-                trades = trades[self.limits[i]<=trades[self.column]]
-        return trades
+            value = trade[self.column]
+            value = self.converter(value)
+            if not ((i+1<len(self.limits) and self.limits[i]<= value and value<self.limits[i+1]) or
+                (i+1>=len(self.limits) and self.limits[i]<=trade[self.column])):
+                return
+        return trade
+            
 
 class IncludesFilter:
-    def __init__(self, name= None, column = None,):
+    def __init__(self, name= None, column = None):
         self.name = name
         self.column = column
 
@@ -102,29 +113,74 @@ class IncludesFilter:
                             options[value] = value
         return options
     
-    def apply(self, options, trades):
+    def apply(self, options, trade):
         if options:
-            return trades[trades[self.column].apply(lambda x: any(i in x.split(',') for i in options))]
-        return trades
+            result = False
+            for value in trade[self.column]:
+                result = result or (value in options)
+            if result:
+                return trade
+        return trade
+    
+class DateFilter:
+    def __init__(self, name= None, column = None, dir = 'from'):
+        self.name = name
+        self.column = column
+        self.dir = dir
+
+    def options(self, trades):
+        return 
+    
+    def apply(self, date, trade):
+        if date:
+            date = datetime.datetime.strptime(date, '%Y-%m-%d')
+            tradeDate = datetime.datetime.strptime(trade[self.column], '%Y-%m-%d')
+            if (self.dir == 'from' and date<=tradeDate) or (self.dir == 'to' and date>=tradeDate):
+                return trade
+            return
+        return trade
 
 class Filters:
     def __init__(self, trades):
         self.trades = trades
         self.filters = {
             'symbol': ChoiceFilter(),
-            'side': ChoiceFilter(column = 'tradeType', choices = [('buy', 'Buy'), ('sell', 'Sell')]),
-            'price': RangeFilter(column = 'entryPrice', limits = [0, 5, 10, 20, 50, 100, 150, 200, 500, 1000, 2000, 5000, 10000], formatter=Formatter(formatter='${cur} - ${next}')),
+            'side': ChoiceFilter(
+                column = 'tradeType', 
+                choices = TRADE_TYPE.choices),
+            'price': RangeFilter(
+                column = 'entryPrice', 
+                limits = [0, 5, 10, 20, 50, 100, 150, 200, 500, 1000, 2000, 5000, 10000], 
+                formatter=Formatter(formatter='${cur} - ${next}')),
             'setup': IncludesFilter(),
             'mistakes': IncludesFilter(),
             'tags': IncludesFilter(),
             'status': ChoiceFilter(choices = STATUS.choices),
-            'asset_type': ChoiceFilter(column='assetType',choices=ASSETS_TYPE.choices),
-            'duration': RangeFilter(limits = [0, 1, 5, 10, 20, 30, 45, 60, 90, 120, 180, 240], formatter = DurationFormatter())	,
-            'day': ChoiceFilter(choices = DAYS.choices),
-            'call_put': ChoiceFilter(name = 'Call / Put', choices=OPTIONS_TYPE.choices),
-            'hour': RangeFilter(limits = range(0, 25), formatter=TimeFormatter(more = False)),
-            'r_mutiple': RangeFilter(limits=[-5, -4, -3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3, 4, 5], formatter = Formatter(formatter = '{cur}R to {next}R', more = False)),
-            'notes_filled': ChoiceFilter(choices=YES_OR_NO.choices),
+            'assetType': ChoiceFilter(choices=ASSETS_TYPE.choices),
+            'duration': RangeFilter(
+                limits = [0, 1, 5, 10, 20, 30, 45, 60, 90, 120, 180, 240], 
+                formatter = DurationFormatter(),
+                converter=lambda v:  (v.days*86400 + v.seconds)/60)	,
+            'day': ChoiceFilter(
+                column='entryDate',
+                choices = DAYS.choices,
+                converter = lambda v: datetime.datetime.strptime(v, '%Y-%m-%d').weekday()+1),
+            'optionsType': ChoiceFilter(
+                name = 'Call / Put', 
+                choices=OPTIONS_TYPE.choices),
+            'hour': RangeFilter(
+                column = 'entryTime',
+                limits = range(0, 25), 
+                formatter=TimeFormatter(more = False),
+                converter=lambda v: datetime.datetime.strptime(v, '%H:%M:%S').hour),
+            # 'r_mutiple': RangeFilter(
+            #     limits=[-5, -4, -3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3, 4, 5], 
+            #     formatter = Formatter(formatter = '{cur}R to {next}R', more = False)),
+            'notesFilled': ChoiceFilter(
+                name='Notes filled',
+                choices=YES_OR_NO.choices),
+            'fromDate': DateFilter(column = 'entryDate', dir='from'),
+            'toDate': DateFilter(column = 'entryDate', dir='to'),
         }
 
         for filter_key in self.filters:
@@ -138,11 +194,15 @@ class Filters:
         filters = {}
         for filter_key in self.filters:
             filter = self.filters[filter_key]
-            filters[filter_key] = [filter.name, filter.options(self.trades.trades)]
+            options = filter.options(self.trades.trades)
+            if options:
+                filters[filter_key] = [filter.name, options]
         return filters
 
-    def apply(self, filters):
+    def apply(self, filters, trade):
         for filter_key in filters:
             options = filters[filter_key]
             filter_obj = self.filters[filter_key]
-            self.trades.trades = filter_obj.apply(options, self.trades.trades)
+            if trade:
+                trade = filter_obj.apply(options, trade)
+        return trade

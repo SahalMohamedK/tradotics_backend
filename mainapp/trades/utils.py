@@ -14,5 +14,5 @@ def human_delta(tdelta):
 
     return fmt.format(**d)
 
-def safeDevide(a, b, otherwise = 0):
+def safe_devide(a, b, otherwise = 0):
     return (a/b) if b > 0 else otherwise

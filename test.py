@@ -1,71 +1,77 @@
-class ChoiceConst:
-    class Repr:
+import pandas as pd
+
+class Execution:
+    def __init__(self, data):
+        self.data = data
+    
+    def __eq__(self, other):
+        if type(other) == str:
+            return self.data['id'] == other
+        return self.data['id'] == other.data['id']
+
+class Trade:
+    def __init__(self, data):
+        self.data = data
+
+    def __eq__(self, other):
+        if type(other) == str:
+            return self.data['id'] == other
+        return self.data['id'] == other.data['id']
+
+    def __contains__(self, other):
+        if isinstance(other, Execution):
+            return other.data['tid'] == self.data['id']
+        return False
+    
+class Executions:
+    def __init__(self, user):
+        self.user = user
+
+    def load(self):
+        pass
+    
+    def get_by_tid(self, tid):
         pass
 
-    def __init__(self, *consts):
-        self.consts = ()
-        if consts:
-            self.consts = consts
+    def get_by_id(self, id):
+        pass
 
-        self.choices = []
-        self.repr = object
-        for i, const in enumerate(self.consts):
-            setattr(self, const.upper(), i)
-            self.choices.append((i, const.replace('_', ' ').capitalize()))
-            setattr(self.Repr, const.upper(), const)
+    def get_all(self):
+        pass
+
+    def create(self, tid, data):
+        pass
     
-    def reducer(self, const):
-        return self.consts.index(const)
-    
-    def expander(self, i):
-        return self.consts[i]
+    def update(self, id, data):
+        pass
 
-class ASSETS_TYPE(ChoiceConst):
-    def __init__(self):
-        self.consts = (
-            'cash', 
-            'equity_options', 
-            'equity_futures', 
-            'forex_spot', 
-            'forex_futures', 
-            'forex_options',  
-            'commodity_futures', 
-            'commodity_options', 
-            'crypto_spot', 
-            'crypto_futures', 
-            'crypto_options'
-        )
+    def delete(self, id):
+        pass
 
-    def is_options(self, asset_type):
-        return asset_type in [self.FOREX_OPTIONS, self.CRYPTO_OPTIONS, self.EQUITY_OPTIONS, self.COMMODITY_OPTIONS]
+    def delete_all(self, tid):
+        pass
 
-STATUS = ChoiceConst(
-    'loss', 
-    'win', 
-    'breakeven'
-)
+class Trades:
+    def __init__(self, user):
+        self.user = user
 
-TRADE_TYPE = ChoiceConst(
-    'buy', 
-    'sell'
-)
+    def load(self):
+        pass
 
-OPTIONS_TYPE = ChoiceConst(
-    'puts', 
-    'calls'
-)
+    def get_by_id(self, id):
+        pass
 
-DAYS = ChoiceConst(
-    'sunday', 
-    'monday', 
-    'tuesday', 
-    'wednesday', 
-    'thursday', 
-    'friday', 
-    'saturday'
-)
+    def get_all(self):
+        pass
 
-YES_OR_NO = ChoiceConst(
-    'yes', 
-    'no'
-)
+    def create(self, data):
+        pass
+
+    def update(self, id, data):
+        pass
+
+    def delete(self, id):
+        pass
+
+    def delete_all(self):
+        pass

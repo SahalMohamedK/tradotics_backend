@@ -8,13 +8,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from .serializers import BrockerNamesSerializer, BrockerSerializer, ImportTradesSerializer, FiltersQuarySerializer, \
-    FiltersSerializer, CompareQuerySerializer, TradeHistrotySerializer, TradeTableQuerySerializer, PaginationQuarySerializer,\
-    TradeSerializer, OrderSerializer, ComparisonSerialiser
-from .models import Brocker, TradeHistory, Comparison
+     CompareQuerySerializer, TradeHistrotySerializer, TradeTableQuerySerializer, PaginationQuarySerializer,\
+    TradeSerializer, ComparisonSerialiser, PortfolioEntrySeriliser, PortfolioSeriliser, ManualTradeSerializer,\
+    ManualExecutionSerializer, OrderSerializer
+from .models import Brocker, TradeHistory, Comparison, Portfolio
 from django.conf import settings
 from .consts import ERROR
 from .responses import success
 from .trades import MergedTrades, OutputTrades, Trades, Orders
+from rest_framework.views import APIView
 from .trades import fields
 
 @api_view(['POST'])
@@ -23,11 +25,8 @@ from .trades import fields
 def filters_view(request):
     user = request.user    
     trades = Trades(user)
-    filters = trades.filters.get()
-    filters_serializer = FiltersSerializer(data = filters)
-    if filters_serializer.is_valid():
-        return Response(filters_serializer.data, status=status.HTTP_200_OK)
-    return Response(filters_serializer.errors, status.HTTP_500_INTERNAL_SERVER_ERROR)
+    data = trades.filters.get()
+    return Response(data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -40,8 +39,7 @@ def trades_table_view(request):
         start = pagination_query_serializer.data['start']
         size = pagination_query_serializer.data['size']
         trades = Trades(user)
-        trades.filters.apply(filters)
-        data = trades.get([fields.trades(start, size)])
+        data = trades.get([fields.trades(start, size)], filters)
         return Response(data, status=status.HTTP_200_OK)
     return Response(pagination_query_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -80,6 +78,8 @@ def dashboard_view(request):
             fields.pnlByDays(),
             fields.pnlByMonths(),
             fields.pnlBySetup(),
+            fields.pnlByMistakes(),
+            fields.pnlByTags(),
             fields.pnlByHours(),
             fields.pnlByDuration(),
             fields.dialyPnl(),
@@ -87,8 +87,7 @@ def dashboard_view(request):
             fields.insights()
         ]
         trades  = Trades(user)
-        trades.filters.apply(filters)
-        data = trades.get(layout)
+        data = trades.get(layout, filters)
         return Response(data, status=status.HTTP_200_OK)
     return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -101,7 +100,6 @@ def detailed_report_view(request):
     if filter_serializer.is_valid():
         filters = filter_serializer.data
         trades = Trades(user)
-        trades.filters.apply(filters)
         layout = [
             fields.counts(),
             fields.pnlByTradeTypes(),
@@ -120,12 +118,14 @@ def detailed_report_view(request):
             fields.dayDistribution(),
             fields.hourDistribution(),
             fields.setupDistribution(),
+            fields.tagsDistribution(),
+            fields.mistakesDistribution(),
             fields.durationDistribution(),
             fields.costDistribution(),
             fields.priceDistribution(),
             fields.symbolDistribution()
         ]
-        data = trades.get(layout)
+        data = trades.get(layout, filters)
         return Response(data, status=status.HTTP_200_OK)
     return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -140,12 +140,11 @@ def day_views_view(request):
         start = pagination_query_serializer.data['start']
         size = pagination_query_serializer.data['size']
         trades = Trades(user)
-        trades.filters.apply(filters)
         layout = [
             fields.dataByDates(start, size),
             fields.totalDates('total')
         ]
-        data = trades.get(layout)
+        data = trades.get(layout, filters)
         return Response(data, status=status.HTTP_200_OK)
     return Response(pagination_query_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -158,11 +157,10 @@ def calender_views_view(request):
     if filters_quary_serializer.is_valid():
         filters = filters_quary_serializer.data
         trades = Trades(user)
-        trades.filters.apply(filters)
         layout = [
             fields.pnlByDates()
         ]
-        data = trades.get(layout)
+        data = trades.get(layout, filters)
         return Response(data, status=status.HTTP_200_OK)
     return Response(filters_quary_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -175,13 +173,12 @@ def trades_view(request):
     if filter_serializer.is_valid():
         filters = filter_serializer.data
         trades = Trades(user)
-        trades.filters.apply(filters)
         layout = [
             fields.highestPnlTrade(),
             fields.lowestPnlTrade(),
             fields.counts()
         ]
-        data = trades.get(layout)
+        data = trades.get(layout, filters)
         return Response(data, status=status.HTTP_200_OK)
     return Response(filter_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -196,10 +193,9 @@ def compare_view(request):
         filters2 = compare_serializer.data['filters2']
         trades1 = Trades(user)
         trades2 = Trades(user)
-        trades1.filters.apply(filters1)
-        trades2.filters.apply(filters2)
         layout = [
             fields.counts(),
+            fields.totalPnl(),
             fields.highestPnlTrade(),
             fields.lowestPnlTrade(),
             fields.cumulativePnl(),
@@ -209,12 +205,14 @@ def compare_view(request):
             fields.pnlByDuration(),
             fields.profitFactor(),
             fields.pnlByStatus(),
+            fields.pnlByTags(),
+            fields.pnlByMistakes(),
             fields.pnlBySetup(),
             fields.pnlByHours(),
             fields.holdTimes()
         ]
-        data1 = trades1.get(layout)
-        data2 = trades2.get(layout)
+        data1 = trades1.get(layout, filters1)
+        data2 = trades2.get(layout, filters2)
         return Response({'data1': data1, 'data2': data2}, status=status.HTTP_200_OK)
     return Response(compare_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -227,7 +225,7 @@ def trade_view(request, id):
     layout = [
         fields.trade(id)
     ]
-    data = trades.get(layout)
+    data = trades.get(layout, {})
     if data['trade']['id'] == id:
         return Response(data, status=status.HTTP_200_OK)
     return Response({'code': ERROR.INVALIED_TRADE}, status=status.HTTP_400_BAD_REQUEST)
@@ -259,6 +257,21 @@ def orders_view(request, id):
     data = orders.get(layout)    
     return Response(data, status=status.HTTP_200_OK)
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def order_update_view(request):
+    order_serializer = OrderSerializer(data = request.data['order'])
+    if order_serializer.is_valid():
+        order = order_serializer.data
+        orders = Orders(request.user)
+        result = orders.update(order)
+        if result:
+            return Response({'code': success.OK}, status=status.HTTP_200_OK)
+        return Response({'code': ERROR.TRADE_UPDATE_FAILED}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(order_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
@@ -282,108 +295,6 @@ def comparisons_view(request):
         return Response(comparison_serializer.data, status=status.HTTP_200_OK)
     return Response({'code': ERROR.NO_COMPARISON}, status=status.HTTP_204_NO_CONTENT)
 
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# @authentication_classes([TokenAuthentication])
-# def order_update_view(request):
-#     user = request.user
-#     order_serializer = OrderSerializer(request.data)
-#     if order_serializer.is_valid():
-#         order = order_serializer.data
-#         orders = Orders(user)
-#         if orders.update(order):
-#             return Response({'code': success.OK}, status=status.HTTP_200_OK)
-#         return Response({'code': ERROR.TRADE_UPDATE_FAILED}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#     return Response(order_serializer.erros, status=status.HTTP_400_BAD_REQUEST)
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# @authentication_classes([TokenAuthentication])
-# def trade_view(request, id):
-#     user = request.user
-#     trade_histories = TradeHistory.objects.filter(user = user)
-#     trades = Trades(user)
-#     if trade_histories.exists():
-#         merged_trades = pd.DataFrame()
-#         is_merged_trades = False
-#         for trade_history in trade_histories:
-#             merged_filename = trade_history.merged_trades
-#             merged_trade = pd.read_csv(merged_filename)
-#             if is_merged_trades:
-#                 merged_trades = pd.concat([merged_trades, merged_trade]).drop_duplicates()
-#             else:
-#                 is_merged_trades = True
-#                 merged_trades = merged_trade
-#     if not merged_trades.empty:
-#         orders = merged_trades[merged_trades['tradeId'] == id]
-#         if not orders.empty:
-#             orders = orders.to_dict('records')
-#         else:
-#             orders = []
-
-#         trade = trades.get(id)
-#         if trade:
-#             entry = datetime.datetime.strptime(f"{trade['entryDate']} {trade['entryTime']}", '%Y-%m-%d %H:%M:%S')
-#             exit = datetime.datetime.strptime(f"{trade['exitDate']} {trade['exitTime']}", '%Y-%m-%d %H:%M:%S')
-#             data = {
-#                 'trade': trade,
-#                 'orders': orders,
-#                 'duration': human_delta(exit-entry),
-#             }
-#             trade_serializer = TradeAnalyticsSerializer(data= data)
-#             if trade_serializer.is_valid():
-#                 return Response(trade_serializer.data, status=status.HTTP_200_OK)
-#             return Response(trade_serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#         return Response({'code': ERROR.NO_TRADE}, status=status.HTTP_400_BAD_REQUEST)
-#     return Response({'code': ERROR.NO_TRADE_HISTORIES}, status=status.HTTP_400_BAD_REQUEST)
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# @authentication_classes([TokenAuthentication])
-# def trade_update_view(request):
-#     user = request.user
-#     trade_update_serializer = TradeSerializer(data = request.data['trade'])
-#     if trade_update_serializer.is_valid():
-#         trade_update = trade_update_serializer.data
-#         result = False
-#         trade_histories = TradeHistory.objects.filter(user = user)
-#         for trade_history in trade_histories:
-#             if trade_history.pk == trade_update['tradeHistory']:
-#                 output_trades = pd.read_csv(trade_history.output_trades)
-#                 trade = output_trades[output_trades['id'] == trade_update['id']]
-#                 index = trade.index[0]
-#                 trade = trade.to_dict('records')[0]
-#                 trade_update['setup'] = ','.join(trade_update['setup'])
-#                 trade_update['mistakes'] = ','.join(trade_update['mistakes'])
-#                 trade_update['tags'] = ','.join(trade_update['tags'])
-#                 for column in trade_update:
-#                     if column in trade and trade[column] != trade_update[column]:
-#                         output_trades.loc[index, column] = trade_update[column]
-#                 output_trades.to_csv(trade_history.output_trades, index=False)
-#                 result = True
-#                 break
-#         if result:
-#             return Response({'message': 'Success'}, status=status.HTTP_200_OK)
-#         return Response({'message': 'Invalied trade updation'}, status=status.HTTP_400_BAD_REQUEST)
-#     return Response(trade_update_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# @authentication_classes([TokenAuthentication])
-# def trade_delete_view(request):
-#     user = request.user
-#     trade_delete_serilizer = TradeSerializer(data = request.data)
-#     if trade_delete_serilizer.is_valid():
-#         data = trade_delete_serilizer.data
-#         id = data['id']
-#         trade_history_id = data['tradeHstory']
-#         trade_history = TradeHistory.objects.get(pk = trade_history_id)
-#         pd.read_csv(trade_history.output_trades)
-#         pd.read_csv(trade_history.merged_trades)
-#     return Response(status=status.HTTP_400_BAD_REQUEST)
-
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
@@ -392,7 +303,9 @@ def import_trades_view(request):
     user = request.user
     if serializer.is_valid():
         brocker_id = serializer.data['brocker']
+        portfolio_id = serializer.data['portfolio']
         brocker = Brocker.objects.get(id = brocker_id)
+        portfolio = Portfolio.objects.get(id = portfolio_id)
         
         file = serializer.validated_data['file']
         file_content = file.read()
@@ -417,10 +330,320 @@ def import_trades_view(request):
         output_trades = OutputTrades(merged_trades)
         output_trades.save(output_filename)
         merged_trades.save(merged_filename)
-        trade = TradeHistory(user=request.user, merged_trades=merged_filename, output_trades=output_filename, brocker=brocker, no_trades = len(output_trades), no_executions = len(merged_trades))
+        trade = TradeHistory(
+            user=request.user,
+            merged_trades=merged_filename, 
+            output_trades=output_filename, 
+            brocker=brocker, 
+            portfolio = portfolio,
+            no_trades = len(output_trades), 
+            no_executions = len(merged_trades))
         trade.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def manual_trade_view(request):
+    manual_trade_serialiser = ManualTradeSerializer(data = request.data)
+    if manual_trade_serialiser.is_valid():
+        user = request.user
+        data = manual_trade_serialiser.data
+        portfolio_id = data.pop('portfolio')
+        portfolio = Portfolio.objects.get(user = user, pk = portfolio_id)
+        trade_history = portfolio.tradehistory_set.filter(type=2)
+        if not trade_history.exists():
+            output_trades = pd.DataFrame()
+            merged_trades = pd.DataFrame()
+            filename = hashlib.md5(('manual:'+user.username).encode()).hexdigest()+'.csv'
+            merged_filename = os.path.join(settings.MERGED_TRADES_PATH, filename)
+            output_filename = os.path.join(settings.OUTPUT_TRADES_PATH, filename)
+        else:
+            merged_filename  = trade_history[0].merged_trades
+            output_filename  =  trade_history[0].output_trades
+            merged_trades = pd.read_csv(merged_filename)
+            output_trades = pd.read_csv(output_filename)
+        output_trades_list = []
+        merged_trades_list = []
+
+        sum_entry_price = 0
+        sum_exit_price = 0
+        entry_quantity = 0
+        exit_quantity = 0
+        entryTime = '99:99:99'
+        entryDate = '99-99-9999'
+        exitTime = '00:00:00'
+        exitDate = '00-00-0000'
+        no_orders = 0
+        for order in data['entries']:
+            no_orders +=1
+            order['price'] = float(order['price'])
+            sum_entry_price += order['price'] * order['volume']
+            entry_quantity += order['volume']
+            if order['date']<entryDate :
+                entryDate = order['date']
+                entryTime = order['time']
+            elif order['date'] == entryDate and order['time']<entryTime:
+                entryTime = order['time']
+        
+        for order in data['exits']:
+            no_orders +=1
+            order['price'] = float(order['price'])
+            sum_exit_price += order['price'] * order['volume']
+            exit_quantity += order['volume']
+            if order['date']>exitDate :
+                exitDate = order['date']
+                exitTime = order['time']
+            elif order['date'] == exitDate and order['time']>exitTime:
+                exitTime = order['time']
+
+        output_trade = {
+            'symbol': data['symbol'],
+            'exchange': '',
+            'quantity': (entry_quantity+exit_quantity)/2,
+            'strikePrice': '',
+            'expiryDate': '',
+            'optionsType': '',
+            'tradeType': data['entryType'],
+            'assetType': data['assetType'],
+            'entryPrice': round(sum_entry_price/entry_quantity, 2),
+            'entryDate': entryDate,
+            'entryTime': entryTime,
+            'exitPrice': round(sum_exit_price/exit_quantity, 2),
+            'exitDate': exitDate,
+            'exitTime': exitTime,
+            'breakeven': '',
+            'avgBuyPrice': round(sum_entry_price/entry_quantity, 2),
+            'avgSellPrice': round(sum_exit_price/exit_quantity, 2),
+            'isOpen': 1 if entry_quantity == exit_quantity else 0,
+            'stoploss': data.get('stoploss', ''),
+            'target': data.get('target', ''),
+            'note': '',
+            'setup': '',
+            'mistakes': '',
+            'tags': '',
+            }
+        output_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), output_trade.values())).encode()).hexdigest()
+        output_trades_list.append(output_trade)
+        
+        for order in data['entries']:
+            merged_trade = {
+                'symbol': data['symbol'],
+                'tradeDate': order['date'],
+                'exchange': '',
+                'quantity': order['volume'],
+                'price': order['price'],
+                'executionTime': order['time'],
+                'strikePrice': '',
+                'expiryDate': '',
+                'optionsType': '',
+                'tradeType': data['entryType'],
+                'assetType': data['assetType'],
+                'tradeId': output_trade['id'],
+            }
+            merged_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), merged_trade.values())).encode()).hexdigest()
+            merged_trades_list.append(merged_trade)
+        for order in data['exits']:
+            merged_trade = {
+                'symbol': data['symbol'],
+                'tradeDate': order['date'],
+                'exchange': '',
+                'quantity': order['volume'],
+                'price': -order['price'],
+                'executionTime': order['time'],
+                'strikePrice': '',
+                'expiryDate': '',
+                'optionsType': '',
+                'tradeType': data['entryType'],
+                'assetType': data['assetType'],
+                'tradeId': output_trade['id'],
+            }
+            merged_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), merged_trade.values())).encode()).hexdigest()
+            merged_trades_list.append(merged_trade)
+
+        if not trade_history.exists():  
+
+            trade_history = TradeHistory(
+                    user = user,
+                    type = 2,
+                    merged_trades = merged_filename,
+                    output_trades = output_filename,
+                    portfolio = portfolio,
+                    no_trades = 1,
+                    no_executions = no_orders
+                )
+            trade_history.save()
+        else:
+            trade_history.update(
+                no_trades = trade_history[0].no_trades + 1, 
+                no_executions = trade_history[0].no_executions + no_orders
+            )
+    
+        print(output_trades)
+        print(output_trades_list)
+        output_trades = pd.concat([output_trades, pd.DataFrame(output_trades_list)])
+        merged_trades = pd.concat([merged_trades, pd.DataFrame(merged_trades_list)])
+        merged_trades.to_csv(merged_filename, index=False)
+        output_trades.to_csv(output_filename, index=False)
+        return Response({'code': success.OK}, status=status.HTTP_200_OK)
+    return Response(manual_trade_serialiser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# @authentication_classes([TokenAuthentication])
+# def manual_execution_view(request):
+#     manual_execution_serialiser = ManualExecutionSerializer(data = request.data)
+#     if manual_execution_serialiser.is_valid():
+#         user = request.user
+#         data = manual_execution_serialiser.data
+#         portfolio_id = data.pop('portfolio')
+#         portfolio = Portfolio.objects.get(user = user, pk = portfolio_id)
+#         trade_history = portfolio.tradehistory_set.filter(type=2)
+#         if not trade_history.exists():
+#             output_trades = pd.DataFrame()
+#             merged_trades = pd.DataFrame()
+#             filename = hashlib.md5(('manual:'+user.username).encode()).hexdigest()+'.csv'
+#             merged_filename = os.path.join(settings.MERGED_TRADES_PATH, filename)
+#             output_filename = os.path.join(settings.OUTPUT_TRADES_PATH, filename)
+#         else:
+#             merged_filename  = trade_history[0].merged_trades
+#             output_filename  =  trade_history[0].output_trades
+#             merged_trades = pd.read_csv(merged_filename)
+#             output_trades = pd.read_csv(output_filename)
+#         output_trades_list = []
+#         merged_trades_list = []
+
+#         sum_entry_price = 0
+#         sum_exit_price = 0
+#         entry_quantity = 0
+#         exit_quantity = 0
+#         entryTime = '99:99:99'
+#         entryDate = '99-99-9999'
+#         exitTime = '00:00:00'
+#         exitDate = '00-00-0000'
+#         no_orders = 0
+#         for order in data['entries']:
+#             no_orders +=1
+#             order['price'] = float(order['price'])
+#             sum_entry_price += order['price'] * order['volume']
+#             entry_quantity += order['volume']
+#             if order['date']<entryDate :
+#                 entryDate = order['date']
+#                 entryTime = order['time']
+#             elif order['date'] == entryDate and order['time']<entryTime:
+#                 entryTime = order['time']
+        
+#         for order in data['exits']:
+#             no_orders +=1
+#             order['price'] = float(order['price'])
+#             sum_exit_price += order['price'] * order['volume']
+#             exit_quantity += order['volume']
+#             if order['date']>exitDate :
+#                 exitDate = order['date']
+#                 exitTime = order['time']
+#             elif order['date'] == exitDate and order['time']>exitTime:
+#                 exitTime = order['time']
+
+#         output_trade = {
+#             'symbol': data['symbol'],
+#             'exchange': '',
+#             'quantity': (entry_quantity+exit_quantity)/2,
+#             'strikePrice': '',
+#             'expiryDate': '',
+#             'optionsType': '',
+#             'tradeType': data['entryType'],
+#             'assetType': data['assetType'],
+#             'entryPrice': round(sum_entry_price/entry_quantity, 2),
+#             'entryDate': entryDate,
+#             'entryTime': entryTime,
+#             'exitPrice': round(sum_exit_price/exit_quantity, 2),
+#             'exitDate': exitDate,
+#             'exitTime': exitTime,
+#             'breakeven': '',
+#             'avgBuyPrice': round(sum_entry_price/entry_quantity, 2),
+#             'avgSellPrice': round(sum_exit_price/exit_quantity, 2),
+#             'isOpen': 1 if entry_quantity == exit_quantity else 0,
+#             'stoploss': data.get('stoploss', ''),
+#             'target': data.get('target', ''),
+#             'note': '',
+#             'setup': '',
+#             'mistakes': '',
+#             'tags': '',
+#             }
+#         output_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), output_trade.values())).encode()).hexdigest()
+#         output_trades_list.append(output_trade)
+        
+#         for order in data['entries']:
+#             merged_trade = {
+#                 'symbol': data['symbol'],
+#                 'tradeDate': order['date'],
+#                 'exchange': '',
+#                 'quantity': order['volume'],
+#                 'price': order['price'],
+#                 'executionTime': order['time'],
+#                 'strikePrice': '',
+#                 'expiryDate': '',
+#                 'optionsType': '',
+#                 'tradeType': data['entryType'],
+#                 'assetType': data['assetType'],
+#                 'tradeId': output_trade['id'],
+#             }
+#             merged_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), merged_trade.values())).encode()).hexdigest()
+#             merged_trades_list.append(merged_trade)
+#         for order in data['exits']:
+#             merged_trade = {
+#                 'symbol': data['symbol'],
+#                 'tradeDate': order['date'],
+#                 'exchange': '',
+#                 'quantity': order['volume'],
+#                 'price': -order['price'],
+#                 'executionTime': order['time'],
+#                 'strikePrice': '',
+#                 'expiryDate': '',
+#                 'optionsType': '',
+#                 'tradeType': data['entryType'],
+#                 'assetType': data['assetType'],
+#                 'tradeId': output_trade['id'],
+#             }
+#             merged_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), merged_trade.values())).encode()).hexdigest()
+#             merged_trades_list.append(merged_trade)
+
+#         if not trade_history.exists():  
+
+#             trade_history = TradeHistory(
+#                     user = user,
+#                     type = 2,
+#                     merged_trades = merged_filename,
+#                     output_trades = output_filename,
+#                     portfolio = portfolio,
+#                     no_trades = 1,
+#                     no_executions = no_orders
+#                 )
+#             trade_history.save()
+#         else:
+#             trade_history.update(
+#                 no_trades = trade_history[0].no_trades + 1, 
+#                 no_executions = trade_history[0].no_executions + no_orders
+#             )
+    
+#         print(output_trades)
+#         print(output_trades_list)
+#         output_trades = pd.concat([output_trades, pd.DataFrame(output_trades_list)])
+#         merged_trades = pd.concat([merged_trades, pd.DataFrame(merged_trades_list)])
+#         merged_trades.to_csv(merged_filename, index=False)
+#         output_trades.to_csv(output_filename, index=False)
+#         return Response({'code': success.OK}, status=status.HTTP_200_OK)
+#     return Response(manual_trade_serialiser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def symbols_view(request):
+    trades = Trades(request.user)
+    data = trades.get([fields.symbols()], {})['symbols']
+    return Response(data, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -504,3 +727,55 @@ def test_view(request):
     # trades.filters.apply(filters)
     data = trades.get(layout)
     return Response(data, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def edit_portfolio_view(request):
+    pk = request.data.pop('pk')
+    print(pk)
+    portfolios = Portfolio.objects.filter(user = request.user, pk = pk)
+    if portfolios.exists():
+        portfolios.update(**request.data)
+        return Response(status=status.HTTP_200_OK)
+    return Response(status=status.HTTP_400_BAD_REQUEST)
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def portfolio_view(request):
+    portfolios = Portfolio.objects.filter(user = request.user)
+    if portfolios.exists():
+        serializer = PortfolioSeriliser(portfolios, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def add_portfolio_view(request):
+    serializer = PortfolioSeriliser(data=request.data)
+    if serializer.is_valid():
+        serializer.save(user = request.user)
+        return Response(status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def delete_portfolio_view(request):
+    portfolios = Portfolio.objects.filter(user = request.user, pk = request.data['pk'])
+    if portfolios.exists():
+        portfolios.delete()
+        return Response(status=status.HTTP_200_OK)
+    return Response(status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([TokenAuthentication])
+def add_adjustment_view(request):
+    portfolio_entry_serializer = PortfolioEntrySeriliser(data = request.data)
+    if portfolio_entry_serializer.is_valid():
+        portfolio_entry_serializer.save()
+        return Response(status=status.HTTP_200_OK)
+    return Response(data = portfolio_entry_serializer.errors, status=status.HTTP_400_BAD_REQUEST)

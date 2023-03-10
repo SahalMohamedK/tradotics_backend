@@ -1,15 +1,13 @@
 import re
 import pandas as pd
 import hashlib
-import math
 import ast
 import datetime
 from mainapp.models import TradeHistory
 from .filters import Filters
-from .utils import human_delta
-from django.conf import settings
+from .utils import safe_devide
 from .rules import columns
-from .consts import TRADE_TYPE, STATUS
+from mainapp.consts import TRADE_TYPE, STATUS
 
 class MergedTrades:
     def __init__(self, brocker_rules):
@@ -44,7 +42,6 @@ class MergedTrades:
                                 if column.required:
                                     self.error = f"Invalied brocker rules. Brocker rule has no rule for '{column_name}'"
                                     return
-                                merged_trade[column_name] = ''
                                 continue
                             else:
                                 column_rule = self.brocker_rules[column_name]
@@ -77,11 +74,19 @@ class MergedTrades:
                                     for column_value_rule in column_values[column_value]:
                                         column_no = column_value_rule['col']
                                         column_regex = column_value_rule['regex']
+                                        column = columns[column_name]
                                         value = trade[column_no]
                                         matchs.append(re.match(column_regex, str(value)))
                                     if all(matchs):
-                                        merged_trade[column_name] = column_value
+                                        column.set(column_value)
+                                        if column.is_valid():
+                                            value = column.get()
+                                            merged_trade[column_name] = value
+                                        else:
+                                            self.error = column.error
+                                            return
                                         break
+                                    
                             merged_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), merged_trade.values())).encode()).hexdigest()
                         if order_id in merged_trades:
                             merged_trades[order_id]['quantity'] += merged_trade['quantity']
@@ -89,7 +94,6 @@ class MergedTrades:
                         else:
                             merged_trades[order_id] = merged_trade
                             merged_trades[order_id]['price'] = merged_trade['price']*merged_trade['quantity']
-
                     else:
                         self.error = f"Your file is not matching to the general format in the column 'orderId'"
                         return
@@ -137,13 +141,13 @@ class OutputTrades:
                     entry_date = trade['tradeDate']
                     entry_time = trade['executionTime']
                     trade_type = trade['tradeType']
-                if trade['tradeType'] == 'sell':
+                if trade['tradeType'] == TRADE_TYPE.SELL:
                     breakpoint += 1
                     sum_sell_price += trade['quantity']*trade['price']
                     n_sell_trades += trade['quantity']
                     quantity -= trade['quantity']
                     buy_quantity += trade['quantity']
-                elif trade['tradeType'] == 'buy':
+                elif trade['tradeType'] == TRADE_TYPE.BUY:
                     breakpoint += 1
                     sum_buy_price += trade['quantity']*trade['price']
                     n_buy_trades += trade['quantity']
@@ -153,10 +157,10 @@ class OutputTrades:
                     avg_sell_price = round(sum_sell_price/n_sell_trades, 2) if n_sell_trades>0 else 0
                     avg_buy_price = round(sum_buy_price/n_buy_trades, 2) if n_buy_trades>0 else 0
                     qty = int((buy_quantity+sell_quantity)/2)
-                    trade['entryPrice'] = avg_buy_price if trade_type == 'buy' else avg_sell_price
+                    trade['entryPrice'] = avg_buy_price if trade_type == TRADE_TYPE.BUY else avg_sell_price
                     trade['entryDate'] = entry_date
                     trade['entryTime'] = entry_time
-                    trade['exitPrice'] = avg_sell_price if trade_type == 'buy' else avg_buy_price
+                    trade['exitPrice'] = avg_sell_price if trade_type == TRADE_TYPE.BUY else avg_buy_price
                     trade['exitDate'] = trade['tradeDate']
                     trade['exitTime'] = trade['executionTime']
                     trade['breakeven'] = breakpoint
@@ -167,11 +171,11 @@ class OutputTrades:
                     trade['isOpen'] = 0
                     trade['stoploss'] = 0
                     trade['target'] = 0
-                    trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
                     trade['note'] = ''
                     trade['setup'] = ''
                     trade['mistakes'] = ''
                     trade['tags'] = ''
+                    trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
                     for i in idxs:
                         self.merged_trades.loc[i, 'tradeId'] = trade['id']
                     sum_buy_price = 0
@@ -187,10 +191,10 @@ class OutputTrades:
                 avg_sell_price = round(sum_sell_price/n_sell_trades, 2) if n_sell_trades>0 else 0
                 avg_buy_price = round(sum_buy_price/n_buy_trades, 2) if n_buy_trades>0 else 0
                 qty = int((buy_quantity+sell_quantity)/2)
-                trade['entryPrice'] = avg_buy_price if trade_type == 'buy' else avg_sell_price
+                trade['entryPrice'] = avg_buy_price if trade_type == TRADE_TYPE.BUY else avg_sell_price
                 trade['entryDate'] = entry_date
                 trade['entryTime'] = entry_time
-                trade['exitPrice'] = avg_sell_price if trade_type == 'buy' else avg_buy_price
+                trade['exitPrice'] = avg_sell_price if trade_type == TRADE_TYPE.BUY else avg_buy_price
                 trade['exitDate'] = trade['tradeDate']
                 trade['exitTime'] = trade['executionTime']
                 trade['breakeven'] = breakpoint
@@ -201,11 +205,11 @@ class OutputTrades:
                 trade['isOpen'] = 1
                 trade['stoploss'] = 0
                 trade['target'] = 0
-                trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
                 trade['note'] = ''
                 trade['setup'] = ''
                 trade['mistakes'] = ''
                 trade['tags'] = ''
+                trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
                 for i in idxs:
                     self.merged_trades.loc[i, 'tradeId'] = trade['id']
                 output_trades.append(trade)
@@ -240,11 +244,11 @@ class Trades:
                 else:
                     is_trades = True
                     self.trades = output_trades
-                self.trades = self.trades.fillna('').sort_values('entryDate')
-            
+        
+        self.trades = self.trades.fillna('').sort_values('entryDate')    
         self.filters = Filters(self)
 
-    def get(self, layout):
+    def get(self, layout, filters):
         data = {}
 
         for field in layout:
@@ -252,17 +256,12 @@ class Trades:
 
         for i, trade in self.trades.iterrows():
             trade = trade.to_dict()
-
             avg_buy_price = trade['avgBuyPrice']
             avg_sell_price = trade['avgSellPrice']
-            trade_type = trade['tradeType']
             quantity = trade['quantity']
+            trade_type = trade['tradeType']
             
             pnl = round((avg_sell_price - avg_buy_price) * quantity, 2)
-            if trade_type == TRADE_TYPE.Repr.BUY:
-                roi = round(100*(avg_sell_price - avg_buy_price) / avg_buy_price, 2)
-            else:
-                roi = round(100*(avg_buy_price - avg_sell_price) / avg_sell_price, 2)
 
             status = STATUS.BREAKEVEN
             if pnl > 0:
@@ -270,32 +269,39 @@ class Trades:
             elif pnl < 0:
                 status = STATUS.LOSS
 
-            date_to_expiry = 'N/A'
+            entry_date = trade['entryDate']
+            entry_time = trade['entryTime']
+            exit_date = trade['exitDate']
+            exit_time = trade['exitTime']
+            start_time = datetime.datetime.strptime(f'{entry_date} {entry_time}', '%Y-%m-%d %H:%M:%S')
+            end_time = datetime.datetime.strptime(f'{exit_date} {exit_time}', '%Y-%m-%d %H:%M:%S')
+            duration = (end_time-start_time)
+
+            if trade_type == TRADE_TYPE.Repr.BUY:
+                roi = round(100*safe_devide(avg_sell_price - avg_buy_price, avg_buy_price), 2)
+            else:
+                roi = round(100*safe_devide(avg_buy_price - avg_sell_price, avg_sell_price), 2)
+            
+            trade['daysToExpiry'] = -1
             if trade['expiryDate']:
                 expiry_date = datetime.datetime.strptime(trade['expiryDate'], '%Y-%m-%d')
-                entry_date = datetime.datetime.strptime(trade['entryDate'], '%Y-%m-%d')
-
-                date_to_expiry = (expiry_date - entry_date).days
-
-                if date_to_expiry>=30:
-                    date_to_expiry = '30+ days'
-                elif date_to_expiry>6:
-                    date_to_expiry = '6 to 30 days'
-                elif date_to_expiry == 0:
-                    date_to_expiry = 'Same day'
-                else:
-                    date_to_expiry = f'{date_to_expiry} days'
+                entry_date = datetime.datetime.strptime(entry_date, '%Y-%m-%d')
+        
+                trade['daysToExpiry'] = (expiry_date - entry_date).days
 
             trade['netPnl'] = pnl
-            trade['status'] = status
             trade['roi'] = roi
             trade['charge'] = round(pnl / 10, 4)
-            trade['dateToExpiry'] = date_to_expiry
+            trade['duration'] = duration
+            trade['status'] = status
             trade['setup'] = list(filter(lambda i: i != '', str(trade['setup']).split(',')))
             trade['mistakes'] = list(filter(lambda i: i != '', str(trade['mistakes']).split(',')))
             trade['tags'] = list(filter(lambda i: i != '', str(trade['tags']).split(',')))
-            for field in layout:
-                field.get(trade)
+            trade = self.filters.apply(filters, trade)
+            if trade:
+                for field in layout:
+                    if field.include_open_trades == trade['isOpen']:
+                        field.get(trade)
 
         for field in layout:
             field.convert(data, self)
@@ -320,7 +326,7 @@ class Trades:
             output_trades.to_csv(trade_history.output_trades, index=False)
             return True
         return False
-
+    
 class Orders:
     def __init__(self, user):
         self.user = user
@@ -366,115 +372,17 @@ class Orders:
 
         return data
     
-    # def update(self, order_update):
-    #     trade_history = TradeHistory.objects.filter(user=self.user, pk = order_update['tradeHistory'])
-    #     if trade_history.exists():
-    #         trade_history = trade_history[0]
-    #         merged_trades = pd.read_csv(trade_history.merged_trades)
-    #         order = merged_trades[merged_trades['id'] == order_update['id']]
-    #         index = order.index[0]
-    #         order = order.to_dict('records')[0]
-    #         for column in order_update:
-    #             if column in order and order[column] != order_update[column]:
-    #                 merged_trades.loc[index, column] = order_update[column]
-    #         merged_trades.to_csv(trade_history.merged_trades, index=False)
-            
-    #         trades = Trades(self.user)
-    #         layout = [
-    #             fields.trade(order['tradeId']),
-    #             fields.orders(order['tradeId'])
-    #         ]
-    #         data = trades.get(layout)
-    #         trade_update = {}
-    #         quantity = 0
-    #         entry_date = None
-    #         entry_time = None
-    #         breakpoint = 0
-    #         sum_buy_price = 0
-    #         n_buy_trades = 0
-    #         sum_sell_price = 0
-    #         n_sell_trades = 0
-    #         buy_quantity = 0
-    #         sell_quantity = 0
-    #         for trade in data['orders']:
-    #             if quantity == 0:
-    #                 entry_date = trade['tradeDate']
-    #                 entry_time = trade['executionTime']
-    #                 trade_type = trade['tradeType']
-    #             if trade['tradeType'] == 'sell':
-    #                 breakpoint += 1
-    #                 sum_sell_price += trade['quantity']*trade['price']
-    #                 n_sell_trades += trade['quantity']
-    #                 quantity -= trade['quantity']
-    #                 buy_quantity += trade['quantity']
-    #             elif trade['tradeType'] == 'buy':
-    #                 breakpoint += 1
-    #                 sum_buy_price += trade['quantity']*trade['price']
-    #                 n_buy_trades += trade['quantity']
-    #                 quantity += trade['quantity']
-    #                 sell_quantity += trade['quantity']
-    #             if quantity == 0:
-    #                 avg_sell_price = round(sum_sell_price/n_sell_trades, 2) if n_sell_trades>0 else 0
-    #                 avg_buy_price = round(sum_buy_price/n_buy_trades, 2) if n_buy_trades>0 else 0
-    #                 qty = int((buy_quantity+sell_quantity)/2)
-    #                 trade['entryPrice'] = avg_buy_price if trade_type == 'buy' else avg_sell_price
-    #                 trade['entryDate'] = entry_date
-    #                 trade['entryTime'] = entry_time
-    #                 trade['exitPrice'] = avg_sell_price if trade_type == 'buy' else avg_buy_price
-    #                 trade['exitDate'] = trade['tradeDate']
-    #                 trade['exitTime'] = trade['executionTime']
-    #                 trade['breakeven'] = breakpoint
-    #                 trade['tradeType'] = trade_type
-    #                 trade['avgBuyPrice'] = avg_buy_price
-    #                 trade['avgSellPrice'] = avg_sell_price
-    #                 trade['quantity'] = qty
-    #                 trade['isOpen'] = 0
-    #                 trade['stoploss'] = 0
-    #                 trade['target'] = 0
-    #                 trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
-    #                 trade['note'] = ''
-    #                 trade['setup'] = ''
-    #                 trade['mistakes'] = ''
-    #                 trade['tags'] = ''
-    #                 sum_buy_price = 0
-    #                 n_buy_trades = 0
-    #                 sum_sell_price = 0
-    #                 n_sell_trades = 0
-    #                 breakpoint = 0
-    #                 buy_quantity = 0
-    #                 sell_quantity = 0
-    #                 idxs = []
-    #                 output_trades.append(trade)
-    #         if quantity != 0:
-    #             avg_sell_price = round(sum_sell_price/n_sell_trades, 2) if n_sell_trades>0 else 0
-    #             avg_buy_price = round(sum_buy_price/n_buy_trades, 2) if n_buy_trades>0 else 0
-    #             qty = int((buy_quantity+sell_quantity)/2)
-    #             trade['entryPrice'] = avg_buy_price if trade_type == 'buy' else avg_sell_price
-    #             trade['entryDate'] = entry_date
-    #             trade['entryTime'] = entry_time
-    #             trade['exitPrice'] = avg_sell_price if trade_type == 'buy' else avg_buy_price
-    #             trade['exitDate'] = trade['tradeDate']
-    #             trade['exitTime'] = trade['executionTime']
-    #             trade['breakeven'] = breakpoint
-    #             trade['tradeType'] = trade_type
-    #             trade['avgBuyPrice'] = avg_buy_price
-    #             trade['avgSellPrice'] = avg_sell_price
-    #             trade['quantity'] = qty
-    #             trade['isOpen'] = 1
-    #             trade['stoploss'] = 0
-    #             trade['target'] = 0
-    #             trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), trade.to_list())).encode()).hexdigest()
-    #             trade['note'] = ''
-    #             trade['setup'] = ''
-    #             trade['mistakes'] = ''
-    #             trade['tags'] = ''
-    #             for i in idxs:
-    #                 self.merged_trades.loc[i, 'tradeId'] = trade['id']
-    #             output_trades.append(trade)
-    #     todf = pd.DataFrame(output_trades)
-    #     todf.drop(['tradeDate','executionTime', 'price'], axis = 1, inplace=True)
-    #     todf.to_csv(filename, index=False)
-    #     self.output_trades = output_trades
-    #         trades.update()
-    #         return True
-    #     return False
+    def update(self, order_update):
+        trade_history = TradeHistory.objects.filter(user=self.user, pk = order_update['tradeHistory'])
+        if trade_history.exists():
+            trade_history = trade_history[0]
+            merged_trades = pd.read_csv(trade_history.merged_trades)
+            order = merged_trades[merged_trades['id'] == order_update['id']]
+            index = order.index[0]
+            order = order.to_dict('records')[0]
+            for column in order_update:
+                if column in order and order[column] != order_update[column]:
+                    merged_trades.loc[index, column] = order_update[column]
+            merged_trades.to_csv(trade_history.merged_trades, index=False)
+            return True
+        return False

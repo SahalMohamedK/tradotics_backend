@@ -1,14 +1,16 @@
 import shutil
 import os
 import hashlib
+import datetime
+import pandas as pd
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
-from .models import EarlyAccessUser, Profile, Portfolio
-from mainapp.models import TradeHistory
+from .models import EarlyAccessUser, Profile
+from mainapp.models import TradeHistory, Portfolio, PortfolioEntry
 from django.conf import settings
 
 
@@ -29,13 +31,35 @@ class SignupSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = User.objects.create(username=validated_data['username'], email=validated_data['email'])
         Profile.objects.create(user = user)
-        filename = hashlib.md5(user.username.encode()).hexdigest()+'.csv'
-        merged_filename = os.path.join(settings.MERGED_TRADES_PATH, filename)
-        output_filename = os.path.join(settings.OUTPUT_TRADES_PATH, filename)
-        demo_trade_history = TradeHistory(user=user, merged_trades=merged_filename, output_trades=output_filename, is_demo = True)
+
+        #default portfolio
+        portfolio = Portfolio(
+            user=user, 
+            name='My portfolio'
+        )
+        portfolio_entry = PortfolioEntry(
+            portfolio = portfolio, 
+            type=0, 
+            value=0, 
+            desc='This is a test deposit', 
+            date=datetime.datetime.now()
+        )
+        
+        #demo trades
+        demo_filename = hashlib.md5(('demo:'+user.username).encode()).hexdigest()+'.csv'
+        demo_merged_filename = os.path.join(settings.MERGED_TRADES_PATH, demo_filename)
+        demo_output_filename = os.path.join(settings.OUTPUT_TRADES_PATH, demo_filename)
+
+        demo_trade_history = TradeHistory(
+            user=user, 
+            merged_trades = demo_merged_filename, 
+            output_trades = demo_output_filename, 
+            is_demo = True)
         user.set_password(validated_data['password'])
-        shutil.copy(settings.DEMO_MERGED_TRADES_PATH, merged_filename)
-        shutil.copy(settings.DEMO_OUTPUT_TRADES_PATH, output_filename)
+        shutil.copy(settings.DEMO_MERGED_TRADES_PATH, demo_merged_filename)
+        shutil.copy(settings.DEMO_OUTPUT_TRADES_PATH, demo_output_filename)
+        portfolio.save()
+        portfolio_entry.save()
         demo_trade_history.save()
         user.save()
         return user
@@ -114,8 +138,3 @@ class ChangePasswordSerializer(serializers.Serializer):
         if attrs.get('password') != attrs.get('rePassword'):
             raise serializers.ValidationError({"rePassword": "Password fields didn't match."})
         return attrs
-
-class PortfolioSeriliser(serializers.ModelSerializer):
-    class Meta:
-        model = Portfolio
-        fields = ('name', 'value', 'pk')

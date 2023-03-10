@@ -9,11 +9,12 @@
 """
 
 import datetime
-from .consts import STATUS, TRADE_TYPE, ASSETS_TYPE
-from .utils import human_delta, safeDevide
+from mainapp.consts import STATUS, TRADE_TYPE, ASSETS_TYPE
+from .utils import human_delta, safe_devide
 import math
 
 class Field:
+    include_open_trades = False
     def __init__(self, name = ''):
         self.name = name if name else self.__class__.__name__
 
@@ -32,6 +33,15 @@ class isDemo(Field):
     
     def convert(self, data, trades):
         self.data = trades.is_demo
+
+class symbols(Field):
+    def init(self, trades):
+        self.data = []
+
+    def get(self, trade):
+        symbol = trade['symbol']
+        if not symbol in self.data:
+            self.data.append(symbol)
 
 class cumulativePnl(Field):
     def init(self, trades):
@@ -149,7 +159,7 @@ class profitFactor(Field):
             self.loss -= pnl
     
     def convert(self, *args):
-        self.data = round(safeDevide(self.wins, self.loss), 2)
+        self.data = round(safe_devide(self.wins, self.loss), 2)
 
 class pnlByStatus(Field):
     def init(self, trades):
@@ -212,12 +222,46 @@ class pnlBySetup(Field):
         setups = trade['setup']
         for setup in setups:
             if setup in self.pnl_by_setup:
-                self.datpnl_by_setupa[setup] += trade['netPnl']
+                self.pnl_by_setup[setup] += trade['netPnl']
             else:
                 self.pnl_by_setup[setup] = trade['netPnl']
     
     def convert(self, *args):
         self.data = [list(self.pnl_by_setup.keys()), list(self.pnl_by_setup.values())]
+
+class pnlByMistakes(Field):
+    def init(self, trades):
+        # [ 'labels', 'values' ]
+        self.data = [[], []]
+        self.pnl_by_mistakes = {}
+
+    def get(self, trade):
+        mistakes = trade['mistakes']
+        for mistake in mistakes:
+            if mistake in self.pnl_by_mistakes:
+                self.pnl_by_mistakes[mistake] += trade['netPnl']
+            else:
+                self.pnl_by_mistakes[mistake] = trade['netPnl']
+    
+    def convert(self, *args):
+        self.data = [list(self.pnl_by_mistakes.keys()), list(self.pnl_by_mistakes.values())]
+
+class pnlByTags(Field):
+    def init(self, trades):
+        # [ 'labels', 'values' ]
+        self.data = [[], []]
+        self.pnl_by_tags = {}
+
+    def get(self, trade):
+        tags = trade['tags']
+        for tag in tags:
+            if tag in self.pnl_by_tags:
+                self.pnl_by_tags[tag] += trade['netPnl']
+            else:
+                self.pnl_by_tags[tag] = trade['netPnl']
+    
+    def convert(self, *args):
+        self.data = [list(self.pnl_by_tags.keys()), list(self.pnl_by_tags.values())]
 
 class pnlByDuration(Field):
     def init(self, trades):
@@ -340,6 +384,7 @@ class maxConsec(Field):
             self.data[1] = 0
 
 class openAndClose(Field):
+    include_open_trades = True
     def init(self, trades):
         # [ 'opened', 'closed' ]
         self.data = [0, 0]
@@ -427,11 +472,11 @@ class holdTimes(Field):
         
     def convert(self, *args):
         self.data = [
-            human_delta(safeDevide(self.sum_hold_time, self.n)),
-            human_delta(safeDevide(self.sum_winners_hold_time, self.n)),
-            human_delta(safeDevide(self.sum_lossers_hold_time, self.n)),
-            human_delta(safeDevide(self.sum_long_hold_time, self.n)),
-            human_delta(safeDevide(self.sum_short_hold_time, self.n)),
+            human_delta(safe_devide(self.sum_hold_time, self.n)),
+            human_delta(safe_devide(self.sum_winners_hold_time, self.n)),
+            human_delta(safe_devide(self.sum_lossers_hold_time, self.n)),
+            human_delta(safe_devide(self.sum_long_hold_time, self.n)),
+            human_delta(safe_devide(self.sum_short_hold_time, self.n)),
             human_delta(self.highest_hold_tile),
             ]
 
@@ -444,15 +489,21 @@ class dataByExpiryDate(Field):
         self.winrates = [[0, 0] for _ in range(len(self.labels))]
     
     def get(self, trade):
-        date_to_expiry = trade['dateToExpiry']
+        date_to_expiry = trade['daysToExpiry']
         if date_to_expiry in self.labels:
             self.trades[self.labels.index(date_to_expiry)] += 1
             self.pnls[self.labels.index(date_to_expiry)] += trade['netPnl']
             self.costs[self.labels.index(date_to_expiry)] += trade['entryPrice']*trade['quantity']
-            if trade['netPnl'] > 0:
-                self.winrates[self.labels.index(date_to_expiry)][0] += 1
-            else:
-                self.winrates[self.labels.index(date_to_expiry)][1] += 1
+            i = date_to_expiry
+            if i>6 and i<=30:
+                i = 7
+            elif i>30:
+                i = 8
+            if i>=0:
+                if trade['netPnl'] > 0:
+                    self.winrates[i][0] += 1
+                else:
+                    self.winrates[i][1] += 1
     
     def convert(self ,*args):
         self.data = [self.labels, self.pnls, self.trades, self.costs, self.winrates] 
@@ -626,6 +677,74 @@ class setupDistribution(Field):
                     self.winrates.append([1,0])
                 else:
                     self.winrates.append([0,1])
+
+    def convert(self, *args):
+        self.data = [self.labels, self.pnls, self.trades, self.costs, self.winrates]
+
+class tagsDistribution(Field):
+    def init(self, trades):
+        self.data = []
+        self.labels = []
+        self.pnls = []
+        self.trades = []
+        self.costs = []
+        self.winrates = []
+
+    def get(self, trade):
+        tags = trade['tags']
+        for tag in tags:
+            if tag:
+                if tag in self.labels:
+                    self.pnls[self.labels.index(tag)] += trade['netPnl']
+                    self.trades[self.labels.index(tag)] += 1
+                    self.costs[self.labels.index(tag)] += trade['entryPrice']*trade['quantity']
+                    if trade['netPnl'] > 0:
+                        self.winrates[self.labels.index(tag)][0] += 1
+                    else:
+                        self.winrates[self.labels.index(tag)][1] += 1
+                else:
+                    self.labels.append(tag)
+                    self.pnls.append(trade['netPnl'])
+                    self.trades.append(1)
+                    self.costs.append(trade['entryPrice']*trade['quantity'])
+                    if trade['netPnl'] > 0:
+                        self.winrates.append([1,0])
+                    else:
+                        self.winrates.append([0,1])
+
+    def convert(self, *args):
+        self.data = [self.labels, self.pnls, self.trades, self.costs, self.winrates]
+
+class mistakesDistribution(Field):
+    def init(self, trades):
+        self.data = []
+        self.labels = []
+        self.pnls = []
+        self.trades = []
+        self.costs = []
+        self.winrates = []
+
+    def get(self, trade):
+        mistakes = trade['mistakes']
+        for mistake in mistakes:
+            if mistake:
+                if mistake in self.labels:
+                    self.pnls[self.labels.index(mistake)] += trade['netPnl']
+                    self.trades[self.labels.index(mistake)] += 1
+                    self.costs[self.labels.index(mistake)] += trade['entryPrice']*trade['quantity']
+                    if trade['netPnl'] > 0:
+                        self.winrates[self.labels.index(mistake)][0] += 1
+                    else:
+                        self.winrates[self.labels.index(mistake)][1] += 1
+                else:
+                    self.labels.append(mistake)
+                    self.pnls.append(trade['netPnl'])
+                    self.trades.append(1)
+                    self.costs.append(trade['entryPrice']*trade['quantity'])
+                    if trade['netPnl'] > 0:
+                        self.winrates.append([1,0])
+                    else:
+                        self.winrates.append([0,1])
 
     def convert(self, *args):
         self.data = [self.labels, self.pnls, self.trades, self.costs, self.winrates]
@@ -809,11 +928,22 @@ class trade(Field):
         # trade
         self.data = {'entryDate': "2022-01-01", 'entryPrice': 0, 'entryTime': "10:10:10", 'exitDate': "2022-01-01", 
             'exitPrice': 0, 'exitTime': "10:10:10", 'netPnl': 0 , 'quantity': 0, 'roi': 0,
-            'status': 0, 'symbol': "N/A", 'tradeType': "1", 'id':'N/A'}
+            'status': 0, 'symbol': "N/A", 'tradeType': "1", 'id':'N/A', 'prevTrade': '', 'nextTrade': ''}
+        self.i = -1
+        self.cur = 0
     
     def get(self, trade):
+        self.i += 1
         if trade['id'] == self.id:
             self.data = trade
+            self.cur = self.i
+    
+    def convert(self, data, trades):
+        if self.cur > 0:
+            self.data['prevTrade'] = trades.trades.loc[self.cur-1]['id']
+        
+        if self.cur<len(trades.trades)-1:
+            self.data['nextTrade'] = trades.trades.loc[self.cur+1]['id']
 
 class trades(Field):
     def __init__(self, start, size):
@@ -831,6 +961,7 @@ class trades(Field):
         self.cur += 1     
 
 class openTrades(Field):
+    include_open_trades = True
     def init(self, trades):
         self.data = []
 

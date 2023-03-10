@@ -1,0 +1,3 @@
+symbol,exchange,quantity,strikePrice,expiryDate,optionsType,tradeType,assetType,id,entryPrice,entryDate,entryTime,exitPrice,exitDate,exitTime,breakeven,avgBuyPrice,avgSellPrice,isOpen,stoploss,target,note,setup,mistakes,tags,tradeId
+NIFTY22OCT17000CE,NSE,50,,,1,0,1,883397d8a278d2fa9cec71c2cbd48c17,432.0,2022-09-30,14:51:01,429.35,2022-09-30,14:51:25,2,432.0,429.35,0,0,0,,,,,
+NIFTY22OCTFUT,NSE,50,,,,0,2,d634c8c06efcd9c69348269cdf3f05a1,17143.65,2022-09-30,14:52:07,17140.0,2022-09-30,14:52:47,2,17143.65,17140.0,0,0,0,,,,,

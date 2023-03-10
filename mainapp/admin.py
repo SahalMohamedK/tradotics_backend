@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Brocker, TradeHistory, Comparison
+from .models import Brocker, TradeHistory, Comparison, Portfolio
 
 class TradeHistoryAdmin(admin.ModelAdmin):
     model = TradeHistory
@@ -8,3 +8,4 @@ class TradeHistoryAdmin(admin.ModelAdmin):
 admin.site.register(Brocker)
 admin.site.register(TradeHistory, TradeHistoryAdmin)
 admin.site.register(Comparison)
+admin.site.register(Portfolio)

@@ -1,47 +1,74 @@
-class ChoiceConst:
-    consts = []
+from collections import OrderedDict
 
+class ChoiceConst:
     class Repr:
         pass
 
-    reducer = {}
+    def __init__(self, *consts):
+        self.consts = ()
+        if consts:
+            self.consts = consts
 
-    def __init__(self):
         self.choices = []
         self.repr = object
         for i, const in enumerate(self.consts):
             setattr(self, const.upper(), i)
             self.choices.append((i, const.replace('_', ' ').capitalize()))
             setattr(self.Repr, const.upper(), const)
-            self.reducer[const] = i
+    
+    def reducer(self, const):
+        return self.consts.index(const)
+    
+    def expander(self, i):
+        return self.consts[i]
 
-class STATUS(ChoiceConst):
-    consts = ['loss', 'win', 'breakeven']
+    def contains(self, i):
+        assert 0<=i and i<len(self.consts)
 
-class TRADE_TYPE(ChoiceConst):
-    consts = ['buy', 'sell']
+ASSETS_TYPE = ChoiceConst(
+    'cash', 
+    'equity_options', 
+    'equity_futures', 
+    'forex_spot', 
+    'forex_futures', 
+    'forex_options',  
+    'commodity_futures', 
+    'commodity_options', 
+    'crypto_spot', 
+    'crypto_futures', 
+    'crypto_options'
+)
 
-class OPTIONS_TYPE(ChoiceConst):
-    consts = ['puts', 'calls']
+STATUS = ChoiceConst(
+    'loss', 
+    'win', 
+    'breakeven'
+)
 
-class DAYS(ChoiceConst):
-    consts = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday']
+TRADE_TYPE = ChoiceConst(
+    'buy', 
+    'sell'
+)
 
-class YES_OR_NO(ChoiceConst):
-    consts = ['yes', 'no'] 
+OPTIONS_TYPE = ChoiceConst(
+    'puts', 
+    'calls'
+)
 
-class ASSETS_TYPE(ChoiceConst):
-    consts = ['cash', 'equity_options', 'equity_futures', 'forex_spot', 'forex_futures', 'forex_options',  'commodity_futures', 'commodity_options', 'crypto_spot', 'crypto_futures', 'crypto_options']
+DAYS = ChoiceConst(
+    'sunday', 
+    'monday', 
+    'tuesday', 
+    'wednesday', 
+    'thursday', 
+    'friday', 
+    'saturday'
+)
 
-    def is_options(self, asset_type):
-        return asset_type in [self.FOREX_OPTIONS, self.CRYPTO_OPTIONS, self.EQUITY_OPTIONS, self.COMMODITY_OPTIONS]
-
-STATUS = STATUS()
-TRADE_TYPE = TRADE_TYPE()
-OPTIONS_TYPE = OPTIONS_TYPE()
-DAYS = DAYS()
-YES_OR_NO = YES_OR_NO()
-ASSETS_TYPE = ASSETS_TYPE()
+YES_OR_NO = ChoiceConst(
+    'yes', 
+    'no'
+)
 
 DEFUALT_RULE = f"""{{
     'symbol':{{
