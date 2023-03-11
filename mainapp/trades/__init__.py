@@ -86,7 +86,6 @@ class MergedTrades:
                                             self.error = column.error
                                             return
                                         break
-                                    
                             merged_trade['id'] = hashlib.md5(':'.join(map(lambda i: str(i), merged_trade.values())).encode()).hexdigest()
                         if order_id in merged_trades:
                             merged_trades[order_id]['quantity'] += merged_trade['quantity']
@@ -380,9 +379,13 @@ class Orders:
             order = merged_trades[merged_trades['id'] == order_update['id']]
             index = order.index[0]
             order = order.to_dict('records')[0]
+            backup_order = order.copy()
             for column in order_update:
                 if column in order and order[column] != order_update[column]:
                     merged_trades.loc[index, column] = order_update[column]
             merged_trades.to_csv(trade_history.merged_trades, index=False)
+            # output_trades = pd.read_csv(trade_history.merged_trades)
+            # trade = output_trades[output_trades['id'] == backup_order['tradeID']]
+            # trade['totalPnl']
             return True
         return False
